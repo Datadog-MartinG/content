@@ -1,6 +1,7 @@
 import json
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from CommonServerPython import *  # noqa: F401 # pylint: disable=unused-wildcard-import
 from datadog_api_client import ApiClient, Configuration
@@ -70,6 +71,137 @@ DATE_ERROR_MSG = "Unable to parse date. Please check help section for right form
 AUTHENTICATION_ERROR_MSG = "Authentication Error: Invalid API Key. Make sure API Key and Server URL are correct."
 
 
+""" DATACLASSES """
+
+
+@dataclass
+class Assignee:
+    id: Optional[int] = None
+    uuid: Optional[str] = None
+    name: Optional[str] = None
+
+
+@dataclass
+class Triage:
+    state: Optional[str] = None
+    open_timestamp: Optional[datetime] = None
+    assignee: Optional[Assignee] = None
+
+
+@dataclass
+class Rule:
+    id: Optional[str] = None
+    name: Optional[str] = None
+    type: Optional[str] = None
+    tags: List[str] = field(default_factory=list)
+
+
+@dataclass
+class SecuritySignal:
+    id: Optional[str] = None
+    timestamp: Optional[datetime] = None
+    host: Optional[str] = None
+    service: List[str] = field(default_factory=list)
+    level: Optional[str] = None
+    severity: Optional[str] = None
+    title: Optional[str] = None
+    message: Optional[str] = None
+    rule: Optional[Rule] = None
+    triage: Optional[Triage] = None
+    tags: List[str] = field(default_factory=list)
+    triggering_log_id: Optional[str] = None
+    source: Optional[str] = None
+
+    # Raw signal
+    raw: Dict[str, Any] = field(default_factory=dict)
+
+    def to_display_dict(self) -> Dict[str, Any]:
+        """
+        Convert SecuritySignal to a dictionary optimized for human-readable display.
+
+        Excludes the raw field and formats nested objects appropriately for markdown tables.
+
+        Returns:
+            Dict[str, Any]: Dictionary with display-friendly field names and values.
+        """
+        return {
+            "ID": self.id,
+            "Title": self.title,
+            "Message": self.message,
+            "Severity": self.severity,
+            "State": self.triage.state if self.triage else None,
+            "Rule Name": self.rule.name if self.rule else None,
+            "Rule Type": self.rule.type if self.rule else None,
+            "Source": self.source,
+            "Host": self.host,
+            "Services": ", ".join(self.service) if self.service else None,
+            "Timestamp": str(self.timestamp) if self.timestamp else None,
+            "Assignee": (
+                self.triage.assignee.name
+                if (self.triage and self.triage.assignee)
+                else None
+            ),
+            "Tags": (
+                ", ".join(self.tags[:5]) + ("..." if len(self.tags) > 5 else "")
+                if self.tags
+                else None
+            ),
+        }
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert SecuritySignal to a plain dictionary for XSOAR context output.
+
+        Converts nested dataclass objects to dictionaries and handles datetime serialization.
+
+        Returns:
+            Dict[str, Any]: Dictionary with snake_case field names matching YAML contextPath.
+        """
+        result = {
+            "id": self.id,
+            "timestamp": str(self.timestamp) if self.timestamp else None,
+            "host": self.host,
+            "service": self.service,
+            "level": self.level,
+            "severity": self.severity,
+            "title": self.title,
+            "message": self.message,
+            "tags": self.tags,
+            "triggering_log_id": self.triggering_log_id,
+            "source": self.source,
+            "raw": self.raw,
+        }
+
+        # Convert rule to dict if present
+        if self.rule:
+            result["rule"] = {
+                "id": self.rule.id,
+                "name": self.rule.name,
+                "type": self.rule.type,
+                "tags": self.rule.tags,
+            }
+
+        # Convert triage to dict if present
+        if self.triage:
+            result["triage"] = {
+                "state": self.triage.state,
+                "open_timestamp": (
+                    str(self.triage.open_timestamp)
+                    if self.triage.open_timestamp
+                    else None
+                ),
+            }
+            # Convert assignee to dict if present
+            if self.triage.assignee:
+                result["triage"]["assignee"] = {  # type: ignore
+                    "id": self.triage.assignee.id,
+                    "uuid": self.triage.assignee.uuid,
+                    "name": self.triage.assignee.name,
+                }
+
+        return result
+
+
 """ HELPER FUNCTIONS """
 
 
@@ -126,43 +258,161 @@ def lookup_to_markdown(results: list[dict], title: str) -> str:
     )
 
 
-def signal_for_lookup(signal: dict) -> dict:
+def as_list(v: Any) -> List[Any]:
     """
-    Returns a dictionary with selected security signal information for display.
+    Convert a value to a list format.
 
     Args:
-        signal (Dict): A dictionary representing a security signal.
+        v (Any): Value to convert to list. Can be None, a single value, or already a list.
 
     Returns:
-        Dict: A dictionary containing the following keys.
+        List[Any]: A list containing the value(s). Empty list if input is None.
+
+    Examples:
+        >>> as_list(None)
+        []
+        >>> as_list("single")
+        ["single"]
+        >>> as_list([1, 2, 3])
+        [1, 2, 3]
     """
-    attributes = signal.get("attributes", {})
-    return {
-        "ID": signal.get("id"),
-        "Message": attributes.get("message"),
-        "State": attributes.get("state"),
-        "Timestamp": attributes.get("timestamp"),
-        "Severity": attributes.get("severity"),
-        "Rule Name": attributes.get("rule", {}).get("name"),
-        "Source": attributes.get("source"),
-        "Tags": attributes.get("tags", []),
-        "Assignee": (
-            attributes.get("assignee", {}).get("email")
-            if attributes.get("assignee")
-            else None
-        ),
-    }
+    if v is None:
+        return []
+    if isinstance(v, list):
+        return v
+    return [v]
 
 
-def security_signals_search_query(args: dict) -> str:
+def flatten_tag_map(tag_map: Dict[str, Any]) -> List[str]:
     """
-    Build search query for security signals based on arguments.
+    Flatten a tag dictionary into a list of key:value strings.
 
     Args:
-        args (Dict): Dictionary containing search parameters.
+        tag_map (Dict[str, Any]): Dictionary where keys are tag names and values are tag values.
+                                 Values can be strings, numbers, or lists.
 
     Returns:
-        str: Query string for security signals search.
+        List[str]: List of strings in "key:value" format.
+
+    Examples:
+        >>> flatten_tag_map({"env": "prod", "team": ["security", "ops"]})
+        ["env:prod", "team:security", "team:ops"]
+    """
+    flat: List[str] = []
+    for k, v in (tag_map or {}).items():
+        if isinstance(v, list):
+            flat.extend([f"{k}:{str(item)}" for item in v])
+        else:
+            flat.append(f"{k}:{str(v)}")
+    return flat
+
+
+def parse_security_signal(data: Dict[str, Any]) -> SecuritySignal:
+    """
+    Parse raw security signal data from Datadog API into a structured SecuritySignal object.
+
+    Extracts and organizes key fields from the nested API response structure, handling
+    optional fields gracefully and flattening complex nested data.
+
+    Args:
+        data (Dict[str, Any]): Raw security signal data from Datadog API response.
+                              Expected to contain 'attributes', 'custom', and other nested fields.
+
+    Returns:
+        SecuritySignal: Structured dataclass containing parsed signal information with
+                       nested Rule, Triage, and Assignee objects as applicable.
+
+    Example:
+        >>> api_data = {"id": "signal-123", "attributes": {"message": "Alert", ...}}
+        >>> signal = parse_security_signal(api_data)
+        >>> signal.id
+        "signal-123"
+    """
+
+    data = convert_datetime_to_str(data)
+    attrs = data.get("attributes", {}) or {}
+    custom = attrs.get("custom", {}) or {}
+    workflow = custom.get("workflow", {}) or {}
+    rule_d = workflow.get("rule", {}) or {}
+    triage_d = workflow.get("triage", {}) or {}
+    assignee_d = triage_d.get("assignee", {}) or {}
+    rule = (
+        Rule(
+            id=rule_d.get("id"),
+            name=rule_d.get("name"),
+            type=rule_d.get("type"),
+            tags=as_list(rule_d.get("tags")),
+        )
+        if rule_d
+        else None
+    )
+    triage = (
+        Triage(
+            state=triage_d.get("state"),
+            open_timestamp=triage_d.get("openTimestamp"),
+            assignee=(
+                Assignee(
+                    id=assignee_d.get("id"),
+                    uuid=assignee_d.get("uuid"),
+                    name=assignee_d.get("name"),
+                )
+                if assignee_d
+                else None
+            ),
+        )
+        if triage_d
+        else None
+    )
+    tag_map = data.get("tag") or attrs.get("tag") or {}
+    tags_list = as_list(data.get("tags")) or as_list(attrs.get("tags"))
+    flat_map = flatten_tag_map(tag_map)
+    seen = set(tags_list)
+    tags = tags_list + [t for t in flat_map if t not in seen]
+    services = as_list(data.get("service")) or as_list(attrs.get("service"))
+
+    return SecuritySignal(
+        id=data.get("id"),
+        timestamp=attrs.get("timestamp"),
+        host=attrs.get("host"),
+        service=services,
+        level=custom.get("level") or attrs.get("level"),
+        severity=custom.get("severity"),
+        title=custom.get("title") or attrs.get("title") or rule_d.get("name"),
+        message=attrs.get("message"),
+        rule=rule,
+        triage=triage,
+        tags=tags,
+        triggering_log_id=attrs.get("triggering_log_id"),
+        raw=data,
+    )
+
+
+def security_signals_search_query(args: Dict[str, Any]) -> str:
+    """
+    Build a Datadog search query string for filtering security signals based on provided arguments.
+
+    Constructs a query using Datadog's search syntax with AND operators between conditions.
+    Supports filtering by state, severity, rule name, source, and tags.
+
+    Args:
+        args (Dict[str, Any]): Dictionary containing search parameters. Supported keys:
+            - state (str): Signal state (e.g., "open", "under_review", "archived")
+            - severity (str): Severity level (e.g., "low", "medium", "high", "critical")
+            - rule_name (str): Name of the security rule
+            - source (str): Signal source
+            - tags (str or List[str]): Comma-separated tags or list of tags
+            - query (str): Additional custom query string
+
+    Returns:
+        str: Formatted query string for Datadog API. Returns "*" if no conditions provided.
+
+    Examples:
+        >>> args = {"state": "open", "severity": "high"}
+        >>> security_signals_search_query(args)
+        "@signal.state:open AND @signal.severity:high"
+
+        >>> security_signals_search_query({})
+        "*"
     """
     query_parts = []
 
@@ -268,20 +518,19 @@ def get_security_signal_command(
                     outputs={},
                 )
 
-            # Convert datetime objects to strings for JSON serialization
-            data = convert_datetime_to_str(data)
+            signal = parse_security_signal(data)
 
-            # Create human-readable summary
-            signal_lookup = signal_for_lookup(data)
+            # Create human-readable summary using the display dictionary
+            signal_display = signal.to_display_dict()
             readable_output = lookup_to_markdown(
-                [signal_lookup], "Security Signal Details"
+                [signal_display], "Security Signal Details"
             )
 
             return CommandResults(
                 readable_output=readable_output,
                 outputs_prefix=f"{INTEGRATION_CONTEXT_NAME}.SecuritySignal",
                 outputs_key_field="id",
-                outputs=data,
+                outputs=signal.to_dict(),  # Convert SecuritySignal to plain dict for context
             )
 
     except Exception as e:

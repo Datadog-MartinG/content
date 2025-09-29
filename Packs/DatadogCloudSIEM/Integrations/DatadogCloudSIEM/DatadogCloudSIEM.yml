@@ -1079,39 +1079,66 @@ script:
         - contextPath: Datadog.SecuritySignal.id
           description: The unique identifier of the security signal.
           type: String
-        - contextPath: Datadog.SecuritySignal.type
-          description: The type of the security signal object.
-          type: String
-        - contextPath: Datadog.SecuritySignal.attributes.message
-          description: The message describing the security signal.
-          type: String
-        - contextPath: Datadog.SecuritySignal.attributes.state
-          description: The current state of the security signal (open, under_review, archived).
-          type: String
-        - contextPath: Datadog.SecuritySignal.attributes.timestamp
+        - contextPath: Datadog.SecuritySignal.timestamp
           description: The timestamp when the security signal was generated.
-          type: Date
-        - contextPath: Datadog.SecuritySignal.attributes.severity
+          type: String
+        - contextPath: Datadog.SecuritySignal.host
+          description: Host associated with the security signal.
+          type: String
+        - contextPath: Datadog.SecuritySignal.service
+          description: List of services associated with the security signal.
+          type: Unknown
+        - contextPath: Datadog.SecuritySignal.level
+          description: The level of the security signal.
+          type: String
+        - contextPath: Datadog.SecuritySignal.severity
           description: The severity level of the security signal (low, medium, high, critical).
           type: String
-        - contextPath: Datadog.SecuritySignal.attributes.rule.name
-          description: The name of the security rule that triggered the signal.
+        - contextPath: Datadog.SecuritySignal.title
+          description: The title of the security signal.
           type: String
-        - contextPath: Datadog.SecuritySignal.attributes.rule.id
-          description: The unique identifier of the security rule.
+        - contextPath: Datadog.SecuritySignal.message
+          description: The message describing the security signal.
           type: String
-        - contextPath: Datadog.SecuritySignal.attributes.source
-          description: The source of the security signal.
-          type: String
-        - contextPath: Datadog.SecuritySignal.attributes.tags
+        - contextPath: Datadog.SecuritySignal.tags
           description: List of tags associated with the security signal.
           type: Unknown
-        - contextPath: Datadog.SecuritySignal.attributes.assignee.email
-          description: Email address of the user assigned to the security signal.
+        - contextPath: Datadog.SecuritySignal.triggering_log_id
+          description: ID of the log that triggered the security signal.
           type: String
-        - contextPath: Datadog.SecuritySignal.attributes.assignee.handle
-          description: Handle of the user assigned to the security signal.
+        - contextPath: Datadog.SecuritySignal.source
+          description: The source of the security signal.
           type: String
+        - contextPath: Datadog.SecuritySignal.rule.id
+          description: The unique identifier of the security rule.
+          type: String
+        - contextPath: Datadog.SecuritySignal.rule.name
+          description: The name of the security rule that triggered the signal.
+          type: String
+        - contextPath: Datadog.SecuritySignal.rule.type
+          description: The type of the security rule.
+          type: String
+        - contextPath: Datadog.SecuritySignal.rule.tags
+          description: List of tags associated with the security rule.
+          type: Unknown
+        - contextPath: Datadog.SecuritySignal.triage.state
+          description: The current triage state of the security signal (open, under_review, archived).
+          type: String
+        - contextPath: Datadog.SecuritySignal.triage.open_timestamp
+          description: The timestamp when the signal was opened for triage.
+          type: String
+        - contextPath: Datadog.SecuritySignal.triage.assignee.id
+          description: The ID of the user assigned to the security signal.
+          type: Number
+        - contextPath: Datadog.SecuritySignal.triage.assignee.uuid
+          description: The UUID of the user assigned to the security signal.
+          type: String
+        - contextPath: Datadog.SecuritySignal.triage.assignee.name
+          description: The name of the user assigned to the security signal.
+          type: String
+        - contextPath: Datadog.SecuritySignal.raw
+          description: The raw signal object returned by the API
+          type: Unknown
 
   dockerimage: demisto/datadog-api-client:1.0.0.1832460
   isfetch: true

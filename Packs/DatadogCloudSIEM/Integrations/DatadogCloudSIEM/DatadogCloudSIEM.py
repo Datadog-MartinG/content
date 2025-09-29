@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from CommonServerPython import *  # noqa: F401 # pylint: disable=unused-wildcard-import
+from CommonServerPython import Common, DBotScoreReliability, DBotScoreType
 from datadog_api_client import ApiClient, Configuration
 from datadog_api_client.exceptions import ForbiddenException, UnauthorizedException
 from datadog_api_client.model_utils import unset
@@ -22,15 +23,6 @@ from datadog_api_client.v2.model.security_monitoring_signal_assignee_update_data
 )
 from datadog_api_client.v2.model.security_monitoring_signal_assignee_update_request import (
     SecurityMonitoringSignalAssigneeUpdateRequest,
-)
-from datadog_api_client.v2.model.security_monitoring_signal_list_request import (
-    SecurityMonitoringSignalListRequest,
-)
-from datadog_api_client.v2.model.security_monitoring_signal_list_request_filter import (
-    SecurityMonitoringSignalListRequestFilter,
-)
-from datadog_api_client.v2.model.security_monitoring_signal_list_request_page import (
-    SecurityMonitoringSignalListRequestPage,
 )
 from datadog_api_client.v2.model.security_monitoring_signal_state_update_attributes import (
     SecurityMonitoringSignalStateUpdateAttributes,
@@ -94,6 +86,76 @@ class Rule:
     name: str
     type: str
     tags: List[str]
+
+
+@dataclass
+class Log:
+    id: str
+    timestamp: Optional[datetime] = None
+    message: Optional[str] = None
+    service: Optional[str] = None
+    host: Optional[str] = None
+    source: Optional[str] = None
+    status: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+    # Raw log data
+    raw: Optional[Dict[str, Any]] = None
+
+    def to_display_dict(self) -> Dict[str, Any]:
+        """
+        Convert Log to a dictionary optimized for human-readable display.
+
+        Excludes the raw field and formats content appropriately for markdown tables.
+        Truncates long messages and limits tag display for readability.
+
+        Returns:
+            Dict[str, Any]: Dictionary with display-friendly field names and values.
+        """
+        return {
+            "ID": self.id,
+            "Timestamp": str(self.timestamp) if self.timestamp else None,
+            "Message": (
+                self.message[:100] + "..."
+                if self.message and len(self.message) > 100
+                else self.message
+            ),
+            "Service": self.service,
+            "Host": self.host,
+            "Source": self.source,
+            "Status": self.status,
+            "Tags": (
+                ", ".join(self.tags[:3]) + ("..." if len(self.tags) > 3 else "")
+                if self.tags
+                else None
+            ),
+        }
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert Log to a plain dictionary for XSOAR context output.
+
+        Converts nested objects to dictionaries and handles datetime serialization.
+        Excludes None values to prevent overriding existing fields during partial updates.
+
+        Returns:
+            Dict[str, Any]: Dictionary for context output.
+                           Only includes fields with non-None values.
+        """
+        result = {
+            "id": self.id,
+            "timestamp": str(self.timestamp) if self.timestamp else None,
+            "message": self.message,
+            "service": self.service,
+            "host": self.host,
+            "source": self.source,
+            "status": self.status,
+            "tags": self.tags,
+            "raw": self.raw,
+        }
+
+        # Remove None values recursively
+        return remove_none_values(result)
 
 
 @dataclass
@@ -200,6 +262,171 @@ class SecuritySignal:
 
 
 """ HELPER FUNCTIONS """
+
+
+def extract_iocs_from_signal(signal: SecuritySignal) -> List[Common.Indicator]:
+    """
+    Extract Indicators of Compromise (IOCs) from a SecuritySignal and create standard XSOAR contexts.
+
+    Searches through signal data for IP addresses, domains, URLs, and file hashes,
+    then creates appropriate Common.IP, Common.Domain, etc. objects with DBotScore.
+
+    Args:
+        signal (SecuritySignal): SecuritySignal object to extract IOCs from
+
+    Returns:
+        List[Common.Indicator]: List of standard XSOAR indicator objects
+    """
+    import re
+
+    indicators = []
+
+    # Combine text fields to search for IOCs
+    searchable_text = " ".join(
+        filter(
+            None,
+            [
+                signal.message or "",
+                signal.title or "",
+                signal.source or "",
+                " ".join(signal.tags or []),
+                json.dumps(signal.raw or {}),
+            ],
+        )
+    )
+
+    # Extract IP addresses
+    ip_pattern = r"\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b"
+    ips = set(re.findall(ip_pattern, searchable_text))
+
+    for ip in ips:
+        # Skip private/local IPs for security signals (focus on external threats)
+        if not (
+            ip.startswith(
+                (
+                    "10.",
+                    "172.16.",
+                    "172.17.",
+                    "172.18.",
+                    "172.19.",
+                    "172.20.",
+                    "172.21.",
+                    "172.22.",
+                    "172.23.",
+                    "172.24.",
+                    "172.25.",
+                    "172.26.",
+                    "172.27.",
+                    "172.28.",
+                    "172.29.",
+                    "172.30.",
+                    "172.31.",
+                    "192.168.",
+                    "127.",
+                )
+            )
+        ):
+
+            dbot_score = Common.DBotScore(
+                indicator=ip,
+                indicator_type=DBotScoreType.IP,
+                integration_name="DatadogCloudSIEM",
+                score=Common.DBotScore.NONE,  # SIEM doesn't provide reputation, just detection
+                reliability=DBotScoreReliability.B,
+                malicious_description=f"IP found in Datadog security signal: {signal.title}",
+            )
+
+            ip_indicator = Common.IP(ip=ip, dbot_score=dbot_score)
+            indicators.append(ip_indicator)
+
+    # Extract domains
+    domain_pattern = r"\b[a-zA-Z0-9-]+\.(?:[a-zA-Z]{2,})\b"
+    domains = set(re.findall(domain_pattern, searchable_text))
+
+    for domain in domains:
+        # Filter out common false positives
+        if not domain.lower().endswith(
+            (".png", ".jpg", ".gif", ".css", ".js", ".local", ".internal")
+        ):
+            dbot_score = Common.DBotScore(
+                indicator=domain,
+                indicator_type=DBotScoreType.DOMAIN,
+                integration_name="DatadogCloudSIEM",
+                score=Common.DBotScore.NONE,
+                reliability=DBotScoreReliability.B,
+                malicious_description=f"Domain found in Datadog security signal: {signal.title}",
+            )
+
+            domain_indicator = Common.Domain(domain=domain, dbot_score=dbot_score)
+            indicators.append(domain_indicator)
+
+    # Extract URLs
+    url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
+    urls = set(re.findall(url_pattern, searchable_text))
+
+    for url in urls:
+        dbot_score = Common.DBotScore(
+            indicator=url,
+            indicator_type=DBotScoreType.URL,
+            integration_name="DatadogCloudSIEM",
+            score=Common.DBotScore.NONE,
+            reliability=DBotScoreReliability.B,
+            malicious_description=f"URL found in Datadog security signal: {signal.title}",
+        )
+
+        url_indicator = Common.URL(url=url, dbot_score=dbot_score)
+        indicators.append(url_indicator)
+
+    # Extract file hashes (MD5, SHA1, SHA256)
+    md5_pattern = r"\b[a-fA-F0-9]{32}\b"
+    sha1_pattern = r"\b[a-fA-F0-9]{40}\b"
+    sha256_pattern = r"\b[a-fA-F0-9]{64}\b"
+
+    md5_hashes = set(re.findall(md5_pattern, searchable_text))
+    sha1_hashes = set(re.findall(sha1_pattern, searchable_text))
+    sha256_hashes = set(re.findall(sha256_pattern, searchable_text))
+
+    # Group hashes by type
+    for hash_value in md5_hashes:
+        dbot_score = Common.DBotScore(
+            indicator=hash_value,
+            indicator_type=DBotScoreType.FILE,
+            integration_name="DatadogCloudSIEM",
+            score=Common.DBotScore.NONE,
+            reliability=DBotScoreReliability.B,
+            malicious_description=f"MD5 hash found in Datadog security signal: {signal.title}",
+        )
+
+        file_indicator = Common.File(md5=hash_value, dbot_score=dbot_score)
+        indicators.append(file_indicator)
+
+    for hash_value in sha1_hashes:
+        dbot_score = Common.DBotScore(
+            indicator=hash_value,
+            indicator_type=DBotScoreType.FILE,
+            integration_name="DatadogCloudSIEM",
+            score=Common.DBotScore.NONE,
+            reliability=DBotScoreReliability.B,
+            malicious_description=f"SHA1 hash found in Datadog security signal: {signal.title}",
+        )
+
+        file_indicator = Common.File(sha1=hash_value, dbot_score=dbot_score)
+        indicators.append(file_indicator)
+
+    for hash_value in sha256_hashes:
+        dbot_score = Common.DBotScore(
+            indicator=hash_value,
+            indicator_type=DBotScoreType.FILE,
+            integration_name="DatadogCloudSIEM",
+            score=Common.DBotScore.NONE,
+            reliability=DBotScoreReliability.B,
+            malicious_description=f"SHA256 hash found in Datadog security signal: {signal.title}",
+        )
+
+        file_indicator = Common.File(sha256=hash_value, dbot_score=dbot_score)
+        indicators.append(file_indicator)
+
+    return indicators
 
 
 def remove_none_values(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -427,6 +654,61 @@ def parse_security_signal(data: Dict[str, Any]) -> SecuritySignal:
     )
 
 
+def parse_log(data: Dict[str, Any]) -> Log:
+    """
+    Parse raw log data from Datadog API into a structured Log object.
+
+    Extracts and organizes key fields from the nested API response structure, handling
+    optional fields gracefully and converting timestamps to datetime objects.
+
+    Args:
+        data (Dict[str, Any]): Raw log data from Datadog API response.
+                              Expected to contain 'attributes' and other nested fields.
+
+    Returns:
+        Log: Structured dataclass containing parsed log information.
+
+    Example:
+        >>> api_data = {"id": "log-123", "attributes": {"message": "Error occurred", ...}}
+        >>> log = parse_log(api_data)
+        >>> log.id
+        "log-123"
+    """
+    data = convert_datetime_to_str(data)
+    attrs = data.get("attributes", {}) or {}
+
+    # Parse timestamp if available
+    timestamp = None
+    if attrs.get("timestamp"):
+        try:
+            timestamp = datetime.fromisoformat(
+                attrs.get("timestamp", "").replace("Z", "+00:00")
+            )
+        except (ValueError, AttributeError):
+            # Keep as string if parsing fails
+            timestamp = None
+
+    # Extract tags - can be in different formats
+    tags = attrs.get("tags", [])
+    if isinstance(tags, dict):
+        # Convert tag dict to list of "key:value" strings
+        tags = [f"{k}:{v}" for k, v in tags.items()]
+    elif not isinstance(tags, list):
+        tags = []
+
+    return Log(
+        id=data.get("id", "log-id"),
+        timestamp=timestamp,
+        message=attrs.get("message"),
+        service=attrs.get("service"),
+        host=attrs.get("host"),
+        source=attrs.get("source"),
+        status=attrs.get("status"),
+        tags=tags,
+        raw=data,
+    )
+
+
 def security_signals_search_query(args: Dict[str, Any]) -> str:
     """
     Build a Datadog search query string for filtering security signals based on provided arguments.
@@ -440,7 +722,6 @@ def security_signals_search_query(args: Dict[str, Any]) -> str:
             - severity (str): Severity level (e.g., "low", "medium", "high", "critical")
             - rule_name (str): Name of the security rule
             - source (str): Signal source
-            - tags (str or List[str]): Comma-separated tags or list of tags
             - query (str): Additional custom query string
 
     Returns:
@@ -457,28 +738,65 @@ def security_signals_search_query(args: Dict[str, Any]) -> str:
     query_parts = []
 
     if args.get("state"):
-        query_parts.append(f"@signal.state:{args.get('state')}")
+        query_parts.append(f"state:{args.get('state')}")
 
     if args.get("severity"):
-        query_parts.append(f"@signal.severity:{args.get('severity')}")
+        query_parts.append(f"severity:{args.get('severity')}")
 
     if args.get("rule_name"):
-        query_parts.append(f"@rule.name:{args.get('rule_name')}")
+        query_parts.append(f"rule.name:{args.get('rule_name')}")
 
     if args.get("source"):
-        query_parts.append(f"@signal.source:{args.get('source')}")
-
-    if args.get("tags"):
-        tags = (
-            args.get("tags", "").split(",")
-            if isinstance(args.get("tags"), str)
-            else args.get("tags", [])
-        )
-        for tag in tags:
-            query_parts.append(f"@signal.tags:{tag.strip()}")
+        query_parts.append(f"source:{args.get('source')}")
 
     if args.get("query"):
         query_parts.append(args.get("query"))
+
+    return " AND ".join(query_parts) if query_parts else "*"
+
+
+def build_logs_search_query(args: Dict[str, Any]) -> str:
+    """
+    Build a Datadog search query string for filtering logs based on provided arguments.
+
+    Constructs a query using Datadog's search syntax with AND operators between conditions.
+    Supports filtering by service, host, source, status, and custom query.
+
+    Args:
+        args (Dict[str, Any]): Dictionary containing search parameters. Supported keys:
+            - query (str): Custom search query
+            - service (str): Service name filter
+            - host (str): Host name filter
+            - source (str): Log source filter
+            - status (str): Log status/level filter (info, warn, error, etc.)
+
+    Returns:
+        str: Formatted query string for Datadog Logs API. Returns "*" if no conditions provided.
+
+    Examples:
+        >>> args = {"service": "web-api", "status": "error"}
+        >>> build_logs_search_query(args)
+        "service:web-api AND status:error"
+
+        >>> build_logs_search_query({})
+        "*"
+    """
+    query_parts = []
+
+    if args.get("query"):
+        query_parts.append(args.get("query"))
+
+    if args.get("service"):
+        query_parts.append(f"service:{args.get('service')}")
+
+    if args.get("host"):
+        query_parts.append(f"host:{args.get('host')}")
+
+    if args.get("source"):
+        query_parts.append(f"source:{args.get('source')}")
+
+    if args.get("status"):
+        query_parts.append(f"status:{args.get('status')}")
 
     return " AND ".join(query_parts) if query_parts else "*"
 
@@ -583,10 +901,27 @@ def get_security_signal_command(
 
             signal = parse_security_signal(data)
 
+            # Extract IOCs from the signal for standard XSOAR context
+            indicators = extract_iocs_from_signal(signal)
+
             # Create human-readable summary using the display dictionary
             signal_display = signal.to_display_dict()
-            readable_output = lookup_to_markdown(
-                [signal_display], "Security Signal Details"
+
+            # Add IOC summary to readable output if found
+            ioc_summary = ""
+            if indicators:
+                ioc_counts = {}
+                for indicator in indicators:
+                    ioc_type = type(indicator).__name__.replace("Common", "")
+                    ioc_counts[ioc_type] = ioc_counts.get(ioc_type, 0) + 1
+
+                ioc_summary = "\n\n**IOCs Extracted:** " + ", ".join(
+                    [f"{count} {ioc_type}" for ioc_type, count in ioc_counts.items()]
+                )
+
+            readable_output = (
+                lookup_to_markdown([signal_display], "Security Signal Details")
+                + ioc_summary
             )
 
             return CommandResults(
@@ -594,6 +929,7 @@ def get_security_signal_command(
                 outputs_prefix=SECURITY_SIGNAL_CONTEXT_NAME,
                 outputs_key_field="id",
                 outputs=signal.to_dict(),
+                indicators=indicators,  # This populates standard XSOAR contexts (IP, Domain, URL, File, etc.)
             )
 
     except Exception as e:
@@ -676,15 +1012,35 @@ def get_security_signals_command(
 
             signals = []
             display_data = []
+            all_indicators = []
 
             for signal_data in data_list:
                 signal = parse_security_signal(signal_data)
                 signals.append(signal.to_dict())
                 display_data.append(signal.to_display_dict())
 
+                # Extract IOCs from each signal
+                signal_indicators = extract_iocs_from_signal(signal)
+                all_indicators.extend(signal_indicators)
+
+            # Create summary of all IOCs found across signals
+            ioc_summary = ""
+            if all_indicators:
+                ioc_counts = {}
+                for indicator in all_indicators:
+                    ioc_type = type(indicator).__name__.replace("Common", "")
+                    ioc_counts[ioc_type] = ioc_counts.get(ioc_type, 0) + 1
+
+                ioc_summary = "\n\n**IOCs Extracted:** " + ", ".join(
+                    [f"{count} {ioc_type}" for ioc_type, count in ioc_counts.items()]
+                )
+
             # Create human-readable output
-            readable_output = lookup_to_markdown(
-                display_data, f"Security Signals ({len(signals)} results)"
+            readable_output = (
+                lookup_to_markdown(
+                    display_data, f"Security Signals ({len(signals)} results)"
+                )
+                + ioc_summary
             )
 
             return CommandResults(
@@ -692,6 +1048,7 @@ def get_security_signals_command(
                 outputs_prefix=SECURITY_SIGNAL_CONTEXT_NAME,
                 outputs_key_field="id",
                 outputs=signals,
+                indicators=all_indicators,  # This populates standard XSOAR contexts from all signals
             )
 
     except Exception as e:
@@ -862,9 +1219,105 @@ def update_security_signal_state_command(
 
 def logs_search_command(
     configuration: Configuration,
-    args: dict[str, Any],
-) -> CommandResults | DemistoException:
-    return DemistoException("not implemented")
+    args: Dict[str, Any],
+) -> CommandResults:
+    """
+    Search for logs in Datadog Cloud SIEM with optional filtering.
+
+    Supports filtering by service, host, source, status, and time range.
+    Returns paginated results with configurable sorting for security investigations.
+
+    Args:
+        configuration: Datadog API configuration
+        args: Command arguments containing optional filters and pagination parameters
+
+    Returns:
+        CommandResults: XSOAR command results with list of logs
+
+    Raises:
+        DemistoException: If API call fails or invalid arguments provided
+    """
+    try:
+        page = arg_to_number(args.get("page"), arg_name="page")
+        page_size = arg_to_number(args.get("page_size"), arg_name="page_size")
+        limit = arg_to_number(args.get("limit"), arg_name="limit")
+        limit, _ = pagination(limit, page, page_size)
+
+        sort = args.get("sort", "desc")
+        if sort not in ["asc", "desc"]:
+            raise DemistoException("Sort must be either 'asc' or 'desc'")
+
+        sort_order = (
+            LogsSort.TIMESTAMP_ASCENDING
+            if sort == "asc"
+            else LogsSort.TIMESTAMP_DESCENDING
+        )
+
+        search_query = build_logs_search_query(args)
+
+        # Parse date range
+        from_date = args.get("from_date", DEFAULT_FROM_DATE)
+        to_date = args.get("to_date", DEFAULT_TO_DATE)
+
+        try:
+            from_datetime = parse(from_date, settings={"TIMEZONE": "UTC"})
+            to_datetime = parse(to_date, settings={"TIMEZONE": "UTC"})
+        except Exception as e:
+            raise DemistoException(
+                f"Invalid date format. Use formats like '7 days ago', '2023-01-01T00:00:00Z': {str(e)}"
+            )
+
+        with ApiClient(configuration) as api_client:
+            api_instance = LogsApi(api_client)
+
+            # Build request body
+            body = LogsListRequest(
+                filter=LogsQueryFilter(
+                    query=search_query,
+                    _from=from_datetime.isoformat() if from_datetime else unset,
+                    to=to_datetime.isoformat() if to_datetime else unset,
+                ),
+                page=LogsListRequestPage(limit=limit),
+                sort=sort_order,
+            )
+
+            # Execute search
+            response = api_instance.list_logs(body=body)
+            results = response.to_dict()
+            data_list = results.get("data", [])
+
+            if not data_list:
+                readable_output = "No logs found matching the specified criteria."
+                return CommandResults(
+                    readable_output=readable_output,
+                    outputs_prefix=f"{INTEGRATION_CONTEXT_NAME}.Log",
+                    outputs_key_field="id",
+                    outputs=[],
+                )
+
+            # Process logs using Log dataclass
+            logs = []
+            display_data = []
+
+            for log_data in data_list:
+                log = parse_log(log_data)
+                logs.append(log.to_dict())
+                display_data.append(log.to_display_dict())
+
+            # Create human-readable output
+            readable_output = lookup_to_markdown(
+                display_data, f"Security Logs ({len(logs)} results)"
+            )
+
+            return CommandResults(
+                readable_output=readable_output,
+                outputs_prefix=f"{INTEGRATION_CONTEXT_NAME}.Log",
+                outputs_key_field="id",
+                outputs=logs,
+            )
+
+    except Exception as e:
+        raise DemistoException(f"Failed to search logs: {str(e)}")
 
 
 def fetch_incidents(configuration: Configuration, params: dict):
@@ -955,11 +1408,11 @@ def main() -> None:
             "datadog-security-signal-assignee-update": update_security_signal_assignee_command,
             "datadog-security-signal-state-update": update_security_signal_state_command,
             "datadog-logs-search": logs_search_command,
+            # Special XSOAR command to sync Cloud SIEM signals to XSOAR
+            "fetch-incidents": fetch_incidents,
         }
         if command == "test-module":
             return_results(module_test(configuration))
-        elif command == "fetch-incidents":
-            return_results(fetch_incidents(configuration, params))
         elif command in commands:
             return_results(commands[command](configuration, args))
         else:

@@ -1,14 +1,12 @@
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import datetime
+from typing import Any
 
 from CommonServerPython import *  # noqa: F401 # pylint: disable=unused-wildcard-import
-from CommonServerPython import Common, DBotScoreReliability, DBotScoreType
 from datadog_api_client import ApiClient, Configuration
 from datadog_api_client.exceptions import ForbiddenException, UnauthorizedException
 from datadog_api_client.model_utils import unset
 from datadog_api_client.v1.api.authentication_api import AuthenticationApi
-from datadog_api_client.v1.api.events_api import EventsApi
 from datadog_api_client.v2.api.logs_api import LogsApi
 from datadog_api_client.v2.api.security_monitoring_api import SecurityMonitoringApi
 from datadog_api_client.v2.model.logs_list_request import LogsListRequest
@@ -23,6 +21,15 @@ from datadog_api_client.v2.model.security_monitoring_signal_assignee_update_data
 )
 from datadog_api_client.v2.model.security_monitoring_signal_assignee_update_request import (
     SecurityMonitoringSignalAssigneeUpdateRequest,
+)
+from datadog_api_client.v2.model.security_monitoring_signal_list_request import (
+    SecurityMonitoringSignalListRequest,
+)
+from datadog_api_client.v2.model.security_monitoring_signal_list_request_filter import (
+    SecurityMonitoringSignalListRequestFilter,
+)
+from datadog_api_client.v2.model.security_monitoring_signal_list_request_page import (
+    SecurityMonitoringSignalListRequestPage,
 )
 from datadog_api_client.v2.model.security_monitoring_signal_state_update_attributes import (
     SecurityMonitoringSignalStateUpdateAttributes,
@@ -49,6 +56,7 @@ disable_warnings()
 
 """ CONSTANTS """
 
+SITE = "datadoghq.com"
 DEFAULT_PAGE_SIZE = 50
 PAGE_SIZE_ERROR_MSG = "Invalid Input Error: page size should be greater than zero."
 DEFAULT_FROM_DATE = "-7days"
@@ -56,6 +64,7 @@ DEFAULT_TO_DATE = "now"
 INTEGRATION_NAME = "DatadogCloudSIEM"
 INTEGRATION_CONTEXT_NAME = "Datadog"
 SECURITY_SIGNAL_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecuritySignal"
+LOG_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.Log"
 NO_RESULTS_FROM_API_MSG = "API didn't return any results for given search parameters."
 ERROR_MSG = "Something went wrong!\n"
 AUTHENTICATION_ERROR_MSG = "Authentication Error: Invalid API Key. Make sure API Key and Server URL are correct."
@@ -66,17 +75,17 @@ AUTHENTICATION_ERROR_MSG = "Authentication Error: Invalid API Key. Make sure API
 
 @dataclass
 class Assignee:
-    id: int
     uuid: str
     name: str
+    handle: str
 
 
 @dataclass
 class Triage:
     state: str
-    comment: str
-    reason: str
-    assignee: Assignee
+    archive_comment: str
+    archive_reason: str
+    assignee: Assignee | None = None
 
 
 @dataclass
@@ -84,24 +93,24 @@ class Rule:
     id: str
     name: str
     type: str
-    tags: List[str]
+    tags: list[str]
 
 
 @dataclass
 class Log:
     id: str
-    timestamp: Optional[datetime] = None
-    message: Optional[str] = None
-    service: Optional[str] = None
-    host: Optional[str] = None
-    source: Optional[str] = None
-    status: Optional[str] = None
-    tags: Optional[List[str]] = None
+    timestamp: datetime | None = None
+    message: str | None = None
+    service: str | None = None
+    host: str | None = None
+    source: str | None = None
+    status: str | None = None
+    tags: list[str] | None = None
 
     # Raw log data
-    raw: Optional[Dict[str, Any]] = None
+    raw: dict[str, Any] | None = None
 
-    def to_display_dict(self) -> Dict[str, Any]:
+    def to_display_dict(self) -> dict[str, Any]:
         """
         Convert Log to a dictionary optimized for human-readable display.
 
@@ -128,9 +137,10 @@ class Log:
                 if self.tags
                 else None
             ),
+            "URL": build_log_url(self.id),
         }
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Convert Log to a plain dictionary for XSOAR context output.
 
@@ -150,6 +160,7 @@ class Log:
             "source": self.source,
             "status": self.status,
             "tags": self.tags,
+            "url": build_log_url(self.id),
             "raw": self.raw,
         }
 
@@ -160,21 +171,21 @@ class Log:
 @dataclass
 class SecuritySignal:
     id: str
-    timestamp: Optional[datetime] = None
-    host: Optional[str] = None
-    service: Optional[List[str]] = None
-    severity: Optional[str] = None
-    title: Optional[str] = None
-    message: Optional[str] = None
-    rule: Optional[Rule] = None
-    triage: Optional[Triage] = None
-    tags: Optional[List[str]] = None
-    triggering_log_id: Optional[str] = None
+    timestamp: datetime | None = None
+    host: str | None = None
+    service: str | None = None
+    severity: str | None = None
+    title: str | None = None
+    message: str | None = None
+    rule: Rule | None = None
+    triage: Triage | None = None
+    tags: list[str] | None = None
+    triggering_log_id: str | None = None
 
     # Raw signal
-    raw: Optional[Dict[str, Any]] = None
+    raw: dict[str, Any] | None = None
 
-    def to_display_dict(self) -> Dict[str, Any]:
+    def to_display_dict(self) -> dict[str, Any]:
         """
         Convert SecuritySignal to a dictionary optimized for human-readable display.
 
@@ -190,9 +201,9 @@ class SecuritySignal:
             "Severity": self.severity,
             "State": self.triage.state if self.triage else None,
             "Rule Name": self.rule.name if self.rule else None,
-            "Rule Type": self.rule.type if self.rule else None,
+            "Rule URL": build_security_rule_url(self.rule.id) if self.rule else None,
             "Host": self.host,
-            "Services": ", ".join(self.service) if self.service else None,
+            "Services": self.service,
             "Timestamp": str(self.timestamp) if self.timestamp else None,
             "Assignee": (
                 self.triage.assignee.name
@@ -204,10 +215,11 @@ class SecuritySignal:
                 if self.tags
                 else None
             ),
+            "URL": build_security_signal_url(self.id),
         }
         return remove_none_values(result)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Convert SecuritySignal to a plain dictionary for XSOAR context output.
 
@@ -228,6 +240,7 @@ class SecuritySignal:
             "message": self.message,
             "tags": self.tags,
             "triggering_log_id": self.triggering_log_id,
+            "url": build_security_signal_url(self.id),
             "raw": self.raw,
         }
 
@@ -238,19 +251,19 @@ class SecuritySignal:
                 "name": self.rule.name,
                 "type": self.rule.type,
                 "tags": self.rule.tags,
+                "url": build_security_rule_url(self.rule.id),
             }
 
         # Convert triage to dict if present
         if self.triage:
             result["triage"] = {
                 "state": self.triage.state,
-                "comment": self.triage.comment,
-                "reason": self.triage.reason,
+                "archive_comment": self.triage.archive_comment,
+                "archive_reason": self.triage.archive_reason,
             }
             # Convert assignee to dict if present
             if self.triage.assignee:
                 result["triage"]["assignee"] = {  # type: ignore
-                    "id": self.triage.assignee.id,
                     "uuid": self.triage.assignee.uuid,
                     "name": self.triage.assignee.name,
                 }
@@ -262,147 +275,46 @@ class SecuritySignal:
 """ HELPER FUNCTIONS """
 
 
-def extract_iocs_from_signal(signal: SecuritySignal) -> List[Common.Indicator]:
+def build_security_signal_url(signal_id: str) -> str:
     """
-    Extract Indicators of Compromise (IOCs) from a SecuritySignal and create standard XSOAR contexts.
-
-    Searches through signal data for IP addresses, URLs, and file hashes,
-    then creates appropriate Common.IP, Common.URL, Common.File objects with DBotScore.
-
-    SIEM doesn't provide reputation, just detection, so indicators score is always Common.DBotScore.NONE
+    Construct the Datadog Cloud SIEM URL for a security signal.
 
     Args:
-        signal (SecuritySignal): SecuritySignal object to extract IOCs from
+        signal_id: The security signal ID
 
     Returns:
-        List[Common.Indicator]: List of standard XSOAR indicator objects (IP, URL, File)
+        str: Full URL to view the signal in Datadog UI
     """
-    import re
-
-    indicators = []
-
-    # Combine text fields to search for IOCs
-    searchable_text = " ".join(
-        filter(
-            None,
-            [
-                signal.message or "",
-                signal.title or "",
-                " ".join(signal.tags or []),
-                json.dumps(signal.raw or {}),
-            ],
-        )
-    )
-
-    # Extract IP addresses
-    ip_pattern = r"\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b"
-    ips = set(re.findall(ip_pattern, searchable_text))
-
-    for ip in ips:
-        # Skip private/local IPs for security signals (focus on external threats)
-        if not (
-            ip.startswith(
-                (
-                    "10.",
-                    "172.16.",
-                    "172.17.",
-                    "172.18.",
-                    "172.19.",
-                    "172.20.",
-                    "172.21.",
-                    "172.22.",
-                    "172.23.",
-                    "172.24.",
-                    "172.25.",
-                    "172.26.",
-                    "172.27.",
-                    "172.28.",
-                    "172.29.",
-                    "172.30.",
-                    "172.31.",
-                    "192.168.",
-                    "127.",
-                )
-            )
-        ):
-
-            dbot_score = Common.DBotScore(
-                indicator=ip,
-                indicator_type=DBotScoreType.IP,
-                integration_name=INTEGRATION_NAME,
-                score=Common.DBotScore.NONE,
-                reliability=DBotScoreReliability.B,
-                malicious_description=f"IP found in Datadog security signal: {signal.title} [id:{signal.id}]",
-            )
-            ip_indicator = Common.IP(ip=ip, dbot_score=dbot_score)
-            indicators.append(ip_indicator)
-
-    # Extract URLs
-    url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
-    urls = set(re.findall(url_pattern, searchable_text))
-
-    for url in urls:
-        dbot_score = Common.DBotScore(
-            indicator=url,
-            indicator_type=DBotScoreType.URL,
-            integration_name=INTEGRATION_NAME,
-            score=Common.DBotScore.NONE,
-            reliability=DBotScoreReliability.B,
-            malicious_description=f"URL found in Datadog security signal: {signal.title} [id:{signal.id}]",
-        )
-        url_indicator = Common.URL(url=url, dbot_score=dbot_score)
-        indicators.append(url_indicator)
-
-    # Extract file hashes (MD5, SHA1, SHA256)
-    md5_pattern = r"\b[a-fA-F0-9]{32}\b"
-    sha1_pattern = r"\b[a-fA-F0-9]{40}\b"
-    sha256_pattern = r"\b[a-fA-F0-9]{64}\b"
-
-    md5_hashes = set(re.findall(md5_pattern, searchable_text))
-    sha1_hashes = set(re.findall(sha1_pattern, searchable_text))
-    sha256_hashes = set(re.findall(sha256_pattern, searchable_text))
-
-    # Group hashes by type
-    for hash_value in md5_hashes:
-        dbot_score = Common.DBotScore(
-            indicator=hash_value,
-            indicator_type=DBotScoreType.FILE,
-            integration_name=INTEGRATION_NAME,
-            score=Common.DBotScore.NONE,
-            reliability=DBotScoreReliability.B,
-            malicious_description=f"MD5 hash found in Datadog security signal: {signal.title} [id:{signal.id}]",
-        )
-        file_indicator = Common.File(md5=hash_value, dbot_score=dbot_score)
-        indicators.append(file_indicator)
-
-    for hash_value in sha1_hashes:
-        dbot_score = Common.DBotScore(
-            indicator=hash_value,
-            indicator_type=DBotScoreType.FILE,
-            integration_name=INTEGRATION_NAME,
-            score=Common.DBotScore.NONE,
-            reliability=DBotScoreReliability.B,
-            malicious_description=f"SHA1 hash found in Datadog security signal: {signal.title} [id:{signal.id}]",
-        )
-        file_indicator = Common.File(sha1=hash_value, dbot_score=dbot_score)
-        indicators.append(file_indicator)
-
-    for hash_value in sha256_hashes:
-        dbot_score = Common.DBotScore(
-            indicator=hash_value,
-            indicator_type=DBotScoreType.FILE,
-            integration_name=INTEGRATION_NAME,
-            score=Common.DBotScore.NONE,
-            reliability=DBotScoreReliability.B,
-            malicious_description=f"SHA256 hash found in Datadog security signal: {signal.title} [id:{signal.id}]",
-        )
-        file_indicator = Common.File(sha256=hash_value, dbot_score=dbot_score)
-        indicators.append(file_indicator)
-
-    return indicators
+    return f"https://app.{SITE}/security/signal?event={signal_id}"
 
 
-def remove_none_values(data: Dict[str, Any]) -> Dict[str, Any]:
+def build_security_rule_url(rule_id: str) -> str:
+    """
+    Construct the Datadog Cloud SIEM URL for a security rule.
+
+    Args:
+        rule_id: The security rule ID
+
+    Returns:
+        str: Full URL to view the rule in Datadog UI
+    """
+    return f"https://app.{SITE}/security/rules/view/{rule_id}"
+
+
+def build_log_url(log_id: str) -> str:
+    """
+    Construct the Datadog Cloud url for a log.
+
+    Args:
+        log_id: The log id
+
+    Returns:
+        str: Full URL to view the log in Datadog UI
+    """
+    return f"https://app.{SITE}/logs?event={log_id}"
+
+
+def remove_none_values(data: dict[str, Any]) -> dict[str, Any]:
     """
     Recursively remove keys with None values from a dictionary.
 
@@ -415,7 +327,7 @@ def remove_none_values(data: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(data, dict):
         return data
 
-    result = {}
+    result: dict[str, Any] = {}
     for key, value in data.items():
         if value is None:
             continue
@@ -425,7 +337,7 @@ def remove_none_values(data: Dict[str, Any]) -> Dict[str, Any]:
                 result[key] = cleaned_dict
         elif isinstance(value, list):
             # Handle lists by removing None values and recursively cleaning dict items
-            cleaned_list = []
+            cleaned_list: list[Any] = []
             for item in value:
                 if item is None:
                     continue
@@ -499,7 +411,7 @@ def lookup_to_markdown(results: list[dict], title: str) -> str:
     )
 
 
-def as_list(v: Any) -> List[Any]:
+def as_list(v: Any) -> list[Any]:
     """
     Convert a value to a list format.
 
@@ -524,7 +436,7 @@ def as_list(v: Any) -> List[Any]:
     return [v]
 
 
-def flatten_tag_map(tag_map: Dict[str, Any]) -> List[str]:
+def flatten_tag_map(tag_map: dict[str, Any]) -> list[str]:
     """
     Flatten a tag dictionary into a list of key:value strings.
 
@@ -539,7 +451,7 @@ def flatten_tag_map(tag_map: Dict[str, Any]) -> List[str]:
         >>> flatten_tag_map({"env": "prod", "team": ["security", "ops"]})
         ["env:prod", "team:security", "team:ops"]
     """
-    flat: List[str] = []
+    flat: list[str] = []
     for k, v in (tag_map or {}).items():
         if isinstance(v, list):
             flat.extend([f"{k}:{str(item)}" for item in v])
@@ -548,7 +460,7 @@ def flatten_tag_map(tag_map: Dict[str, Any]) -> List[str]:
     return flat
 
 
-def parse_security_signal(data: Dict[str, Any]) -> SecuritySignal:
+def parse_security_signal(data: dict[str, Any]) -> SecuritySignal:
     """
     Parse raw security signal data from Datadog API into a structured SecuritySignal object.
 
@@ -571,12 +483,22 @@ def parse_security_signal(data: Dict[str, Any]) -> SecuritySignal:
     """
 
     data = convert_datetime_to_str(data)
-    attrs = data.get("attributes", {}) or {}
-    custom = attrs.get("custom", {}) or {}
-    workflow = custom.get("workflow", {}) or {}
-    rule_d = workflow.get("rule", {}) or {}
-    triage_d = workflow.get("triage", {}) or {}
-    assignee_d = triage_d.get("assignee", {}) or {}
+    attrs = {
+        **data.get("attributes", {}).get("attributes", {}),
+        **data.get("attributes", {}),
+    }
+    custom = {
+        **data.get("custom", {}),
+        **attrs.get("custom", {}),
+    }
+    workflow = {
+        **data.get("workflow", {}),
+        **attrs.get("workflow", {}),
+        **custom.get("workflow", {}),
+    }
+    rule_d = workflow.get("rule", {})
+    triage_d = workflow.get("triage", {})
+    assignee_d = triage_d.get("assignee", {})
     rule = (
         Rule(
             id=rule_d.get("id", ""),
@@ -590,32 +512,36 @@ def parse_security_signal(data: Dict[str, Any]) -> SecuritySignal:
     triage = (
         Triage(
             state=triage_d.get("state", ""),
-            reason=triage_d.get("archiveReason", ""),
-            comment=triage_d.get("archiveComment", ""),
+            archive_reason=triage_d.get("archiveReason", ""),
+            archive_comment=triage_d.get("archiveComment", ""),
             assignee=(
                 Assignee(
-                    id=assignee_d.get("id", -1),
                     uuid=assignee_d.get("uuid", ""),
                     name=assignee_d.get("name", "Unassigned"),
+                    handle=assignee_d.get("handle", ""),
                 )
+                if assignee_d
+                else None
             ),
         )
         if triage_d
         else None
     )
+
     tag_map = data.get("tag") or attrs.get("tag") or {}
     tags_list = as_list(data.get("tags")) or as_list(attrs.get("tags"))
     flat_map = flatten_tag_map(tag_map)
     seen = set(tags_list)
     tags = tags_list + [t for t in flat_map if t not in seen]
     services = as_list(data.get("service")) or as_list(attrs.get("service"))
+    service_str = ", ".join(services) if services else None
 
     return SecuritySignal(
         id=data.get("id", "security-signal"),
         timestamp=attrs.get("timestamp"),
         host=attrs.get("host"),
-        service=services,
-        severity=custom.get("severity"),
+        service=service_str,
+        severity=attrs.get("status", "info"),
         title=custom.get("title") or attrs.get("title") or rule_d.get("name"),
         message=attrs.get("message"),
         rule=rule,
@@ -626,7 +552,7 @@ def parse_security_signal(data: Dict[str, Any]) -> SecuritySignal:
     )
 
 
-def parse_log(data: Dict[str, Any]) -> Log:
+def parse_log(data: dict[str, Any]) -> Log:
     """
     Parse raw log data from Datadog API into a structured Log object.
 
@@ -681,7 +607,7 @@ def parse_log(data: Dict[str, Any]) -> Log:
     )
 
 
-def security_signals_search_query(args: Dict[str, Any]) -> str:
+def security_signals_search_query(args: dict[str, Any]) -> str:
     """
     Build a Datadog search query string for filtering security signals based on provided arguments.
 
@@ -692,7 +618,6 @@ def security_signals_search_query(args: Dict[str, Any]) -> str:
         args (Dict[str, Any]): Dictionary containing search parameters. Supported keys:
             - state (str): Signal state (e.g., "open", "under_review", "archived")
             - severity (str): Severity level (e.g., "low", "medium", "high", "critical")
-            - rule_name (str): Name of the security rule
             - source (str): Signal source
             - query (str): Additional custom query string
 
@@ -704,27 +629,28 @@ def security_signals_search_query(args: Dict[str, Any]) -> str:
         >>> security_signals_search_query(args)
         "state:open AND severity:high"
     """
-    query_parts = []
+    query_parts: list[str] = [
+        # This is required to return only Cloud SIEM signals
+        '@workflow.rule.type:("Log Detection" OR "Signal Correlation")'
+    ]
 
     if args.get("state"):
-        query_parts.append(f"state:{args.get('state')}")
+        query_parts.append(f"@workflow.triage.state:{args.get('state')}")
 
     if args.get("severity"):
-        query_parts.append(f"severity:{args.get('severity')}")
-
-    if args.get("rule_name"):
-        query_parts.append(f"rule.name:{args.get('rule_name')}")
+        query_parts.append(f"status:{args.get('severity')}")
 
     if args.get("source"):
         query_parts.append(f"source:{args.get('source')}")
 
-    if args.get("query"):
-        query_parts.append(args.get("query"))
+    query = args.get("query")
+    if query:
+        query_parts.append(str(query))
 
     return " AND ".join(query_parts) if query_parts else "*"
 
 
-def build_logs_search_query(args: Dict[str, Any]) -> str:
+def build_logs_search_query(args: dict[str, Any]) -> str:
     """
     Build a Datadog search query string for filtering logs based on provided arguments.
 
@@ -750,10 +676,11 @@ def build_logs_search_query(args: Dict[str, Any]) -> str:
         >>> build_logs_search_query({})
         "*"
     """
-    query_parts = []
+    query_parts: list[str] = []
 
-    if args.get("query"):
-        query_parts.append(args.get("query"))
+    query = args.get("query")
+    if query:
+        query_parts.append(str(query))
 
     if args.get("service"):
         query_parts.append(f"service:{args.get('service')}")
@@ -801,7 +728,7 @@ def calculate_limit(
     return limit or DEFAULT_PAGE_SIZE
 
 
-def map_severity_to_xsoar(severity: Optional[str]) -> int:
+def map_severity_to_xsoar(severity: str | None) -> int:
     """
     Map Datadog signal severity to XSOAR incident severity.
 
@@ -827,11 +754,11 @@ def map_severity_to_xsoar(severity: Optional[str]) -> int:
 def fetch_security_signals(
     configuration: Configuration,
     filter_query: str,
-    from_datetime: Optional[datetime],
-    to_datetime: Optional[datetime],
+    from_datetime: datetime | None,
+    to_datetime: datetime | None,
     limit: int,
     sort: str = "desc",
-) -> List[SecuritySignal]:
+) -> list[SecuritySignal]:
     """
     Fetch security signals from Datadog API.
 
@@ -862,12 +789,20 @@ def fetch_security_signals(
                 else SecurityMonitoringSignalsSort.TIMESTAMP_ASCENDING
             )
 
-            signal_list_response = api_instance.list_security_monitoring_signals(
-                filter_query=filter_query if filter_query != "*" else unset,
-                filter_from=from_datetime or unset,
-                filter_to=to_datetime or unset,
+            body = SecurityMonitoringSignalListRequest(
+                filter=SecurityMonitoringSignalListRequestFilter(
+                    query=filter_query if filter_query != "*" else unset,
+                    _from=from_datetime or unset,
+                    to=to_datetime or unset,
+                ),
+                page=SecurityMonitoringSignalListRequestPage(
+                    limit=limit,
+                ),
                 sort=sort_order,
-                page_limit=limit,
+            )
+
+            signal_list_response = api_instance.search_security_monitoring_signals(
+                body=body,
             )
 
             results = signal_list_response.to_dict()
@@ -949,27 +884,11 @@ def get_security_signal_command(
 
             signal = parse_security_signal(data)
 
-            # Extract IOCs from the signal for standard XSOAR context
-            indicators = extract_iocs_from_signal(signal)
-
             # Create human-readable summary using the display dictionary
             signal_display = signal.to_display_dict()
 
-            # Add IOC summary to readable output if found
-            ioc_summary = ""
-            if indicators:
-                ioc_counts = {}
-                for indicator in indicators:
-                    ioc_type = type(indicator).__name__.replace("Common", "")
-                    ioc_counts[ioc_type] = ioc_counts.get(ioc_type, 0) + 1
-
-                ioc_summary = "\n\n**IOCs Extracted:** " + ", ".join(
-                    [f"{count} {ioc_type}" for ioc_type, count in ioc_counts.items()]
-                )
-
-            readable_output = (
-                lookup_to_markdown([signal_display], "Security Signal Details")
-                + ioc_summary
+            readable_output = lookup_to_markdown(
+                [signal_display], "Security Signal Details"
             )
 
             return CommandResults(
@@ -977,16 +896,15 @@ def get_security_signal_command(
                 outputs_prefix=SECURITY_SIGNAL_CONTEXT_NAME,
                 outputs_key_field="id",
                 outputs=signal.to_dict(),
-                indicators=indicators,  # This populates standard XSOAR contexts (IP, Domain, URL, File, etc.)
             )
 
     except Exception as e:
         raise DemistoException(f"Failed to get security signal {signal_id}: {str(e)}")
 
 
-def get_security_signals_command(
+def get_security_signal_list_command(
     configuration: Configuration,
-    args: Dict[str, Any],
+    args: dict[str, Any],
 ) -> CommandResults:
     """
     Get a list of security signals with optional filtering.
@@ -1050,34 +968,14 @@ def get_security_signals_command(
         # Process signals for output
         signals = []
         display_data = []
-        all_indicators = []
 
         for signal in signals_objs:
             signals.append(signal.to_dict())
             display_data.append(signal.to_display_dict())
 
-            # Extract IOCs from each signal
-            signal_indicators = extract_iocs_from_signal(signal)
-            all_indicators.extend(signal_indicators)
-
-        # Create summary of all IOCs found across signals
-        ioc_summary = ""
-        if all_indicators:
-            ioc_counts = {}
-            for indicator in all_indicators:
-                ioc_type = type(indicator).__name__.replace("Common", "")
-                ioc_counts[ioc_type] = ioc_counts.get(ioc_type, 0) + 1
-
-            ioc_summary = "\n\n**IOCs Extracted:** " + ", ".join(
-                [f"{count} {ioc_type}" for ioc_type, count in ioc_counts.items()]
-            )
-
         # Create human-readable output
-        readable_output = (
-            lookup_to_markdown(
-                display_data, f"Security Signals ({len(signals)} results)"
-            )
-            + ioc_summary
+        readable_output = lookup_to_markdown(
+            display_data, f"Security Signals ({len(signals)} results)"
         )
 
         return CommandResults(
@@ -1085,7 +983,6 @@ def get_security_signals_command(
             outputs_prefix=SECURITY_SIGNAL_CONTEXT_NAME,
             outputs_key_field="id",
             outputs=signals,
-            indicators=all_indicators,  # This populates standard XSOAR contexts from all signals
         )
 
     except Exception as e:
@@ -1094,7 +991,7 @@ def get_security_signals_command(
 
 def update_security_signal_assignee_command(
     configuration: Configuration,
-    args: Dict[str, Any],
+    args: dict[str, Any],
 ) -> CommandResults:
     """
     Update the assignee of a security signal.
@@ -1128,39 +1025,40 @@ def update_security_signal_assignee_command(
 
     with ApiClient(configuration) as api_client:
         api_instance = SecurityMonitoringApi(api_client)
-        response = api_instance.edit_security_monitoring_signal_assignee(
-            signal_id=str(signal_id), body=body
+        # Update the signal assignee
+        update_response = api_instance.edit_security_monitoring_signal_assignee(
+            signal_id=signal_id,
+            body=body,
         )
-        data = response.to_dict()
-        attributes = data.get("attributes", {})
-        assignee = Assignee(
-            id=attributes.get("assignee", {}).get("id", -1),
-            uuid=attributes.get("assignee", {}).get("uuid", ""),
-            name=attributes.get("assignee", {}).get("name", "Unassigned"),
-        )
-        state = attributes.get("state", "")
-        comment = attributes.get("archive_comment", "")
-        reason = attributes.get("archive_reason", "")
+        update_data = update_response.to_dict().get("data", {})
+        update_attrs = update_data.get("attributes", {})
 
-        signal_update = SecuritySignal(
-            id=signal_id,
-            triage=Triage(
-                state=state,
-                comment=comment,
-                reason=reason,
-                assignee=assignee,
-            ),
+        # Refetch the full signal
+        signal_response = api_instance.get_security_monitoring_signal(
+            signal_id=signal_id
         )
-        signal_display = signal_update.to_display_dict()
+        data = signal_response.to_dict().get("data", {})
+        signal = parse_security_signal(data)
+
+        # Merge update response into signal triage assignee
+        if signal.triage and update_attrs.get("assignee"):
+            assignee_data = update_attrs["assignee"]
+            signal.triage.assignee = Assignee(
+                uuid=assignee_data.get("uuid", ""),
+                name=assignee_data.get("name", "Unassigned"),
+                handle=assignee_data.get("handle", ""),
+            )
+
+        signal_display = signal.to_display_dict()
         readable_output = lookup_to_markdown(
-            [signal_display], f"Security Signals assignee update"
+            [signal_display], "Security Signal Assignee Update"
         )
 
         return CommandResults(
             readable_output=readable_output,
             outputs_prefix=SECURITY_SIGNAL_CONTEXT_NAME,
             outputs_key_field="id",
-            outputs=signal_update.to_dict(),
+            outputs=signal.to_dict(),
         )
 
 
@@ -1218,45 +1116,47 @@ def update_security_signal_state_command(
 
     with ApiClient(configuration) as api_client:
         api_instance = SecurityMonitoringApi(api_client)
-        response = api_instance.edit_security_monitoring_signal_state(
-            signal_id=str(signal_id), body=body
+        # Update the signal state
+        update_response = api_instance.edit_security_monitoring_signal_state(
+            signal_id=signal_id,
+            body=body,
         )
-        data = response.to_dict()
-        attributes = data.get("attributes", {})
-        assignee = Assignee(
-            id=attributes.get("assignee", {}).get("id", -1),
-            uuid=attributes.get("assignee", {}).get("uuid", ""),
-            name=attributes.get("assignee", {}).get("name", "Unassigned"),
-        )
-        updated_state = attributes.get("state", "")
-        comment = attributes.get("archive_comment", "")
-        reason = attributes.get("archive_reason", "")
+        update_data = update_response.to_dict().get("data", {})
+        update_attrs = update_data.get("attributes", {})
 
-        signal_update = SecuritySignal(
-            id=signal_id,
-            triage=Triage(
-                state=updated_state,
-                comment=comment,
-                reason=reason,
-                assignee=assignee,
-            ),
+        # Refetch the full signal
+        signal_response = api_instance.get_security_monitoring_signal(
+            signal_id=signal_id
         )
-        signal_display = signal_update.to_display_dict()
+        data = signal_response.to_dict().get("data", {})
+        signal = parse_security_signal(data)
+
+        # Merge update response into signal triage
+        if signal.triage and update_attrs:
+            signal.triage.state = update_attrs.get("state", signal.triage.state)
+            signal.triage.archive_comment = update_attrs.get(
+                "archive_comment", signal.triage.archive_comment
+            )
+            signal.triage.archive_reason = update_attrs.get(
+                "archive_reason", signal.triage.archive_reason
+            )
+
+        signal_display = signal.to_display_dict()
         readable_output = lookup_to_markdown(
-            [signal_display], f"Security Signal State Update"
+            [signal_display], "Security Signal State Update"
         )
 
         return CommandResults(
             readable_output=readable_output,
             outputs_prefix=SECURITY_SIGNAL_CONTEXT_NAME,
             outputs_key_field="id",
-            outputs=signal_update.to_dict(),
+            outputs=signal.to_dict(),
         )
 
 
 def logs_search_command(
     configuration: Configuration,
-    args: Dict[str, Any],
+    args: dict[str, Any],
 ) -> CommandResults:
     """
     Search for logs in Datadog Cloud SIEM with optional filtering.
@@ -1326,7 +1226,7 @@ def logs_search_command(
                 readable_output = "No logs found matching the specified criteria."
                 return CommandResults(
                     readable_output=readable_output,
-                    outputs_prefix=f"{INTEGRATION_CONTEXT_NAME}.Log",
+                    outputs_prefix=LOG_CONTEXT_NAME,
                     outputs_key_field="id",
                     outputs=[],
                 )
@@ -1347,7 +1247,7 @@ def logs_search_command(
 
             return CommandResults(
                 readable_output=readable_output,
-                outputs_prefix=f"{INTEGRATION_CONTEXT_NAME}.Log",
+                outputs_prefix=LOG_CONTEXT_NAME,
                 outputs_key_field="id",
                 outputs=logs,
             )
@@ -1356,7 +1256,10 @@ def logs_search_command(
         raise DemistoException(f"Failed to search logs: {str(e)}")
 
 
-def fetch_incidents(configuration: Configuration, params: dict) -> None:
+def fetch_incidents(
+    configuration: Configuration,
+    params: dict,
+) -> None:
     """
     Fetch security signals from Datadog Cloud SIEM and create XSOAR incidents.
 
@@ -1368,7 +1271,7 @@ def fetch_incidents(configuration: Configuration, params: dict) -> None:
         params: Integration parameters from XSOAR configuration
             - first_fetch: Time range for initial fetch (e.g., "3 days", "7 days")
             - max_fetch: Maximum number of incidents to fetch per cycle (default: 50)
-            - fetch_severity: Comma-separated list of severities to fetch (e.g., "high,critical")
+            - fetch_severity: Comma-separated list of severities to fetch (e.g., "medium,high,critical")
             - fetch_state: Signal state to fetch (default: "open")
             - fetch_query: Additional custom query filter
 
@@ -1379,7 +1282,7 @@ def fetch_incidents(configuration: Configuration, params: dict) -> None:
         # Get integration parameters
         first_fetch = params.get("first_fetch", "3 days")
         max_fetch = int(params.get("max_fetch", 50))
-        fetch_severity = params.get("fetch_severity", "")
+        fetch_severity = params.get("fetch_severity", "medium")
         fetch_state = params.get("fetch_state", "open")
         fetch_query = params.get("fetch_query", "")
 
@@ -1397,25 +1300,14 @@ def fetch_incidents(configuration: Configuration, params: dict) -> None:
             from_datetime = parse(f"-{first_fetch}", settings={"TIMEZONE": "UTC"})
             demisto.debug(f"First fetch - fetching incidents from: {first_fetch} ago")
 
-        to_datetime = datetime.now(timezone.utc)
+        to_datetime = datetime.now()
 
         # Build filter query
         filter_args = {
             "state": fetch_state,
             "query": fetch_query,
+            "severity": fetch_severity,
         }
-        if fetch_severity:
-            # If multiple severities, build OR query
-            severities = [s.strip() for s in fetch_severity.split(",")]
-            if len(severities) == 1:
-                filter_args["severity"] = severities[0]
-            else:
-                # Build custom severity query
-                severity_query = " OR ".join([f"severity:{s}" for s in severities])
-                filter_args["query"] = f"({severity_query})" + (
-                    f" AND {fetch_query}" if fetch_query else ""
-                )
-
         filter_query = security_signals_search_query(filter_args)
 
         # Fetch security signals
@@ -1426,7 +1318,7 @@ def fetch_incidents(configuration: Configuration, params: dict) -> None:
             from_datetime=from_datetime,
             to_datetime=to_datetime,
             limit=max_fetch,
-            sort="asc",  # Oldest first for chronological incident creation
+            sort="asc",
         )
 
         demisto.debug(f"Fetched {len(signals)} security signals")
@@ -1434,11 +1326,7 @@ def fetch_incidents(configuration: Configuration, params: dict) -> None:
         # Convert signals to XSOAR incidents
         incidents = []
         latest_signal_time = last_fetch_time
-
         for signal in signals:
-            # Create incident from signal
-            # Note: IOCs are embedded in signal.raw and can be extracted via
-            # datadog-security-signal-get command or playbooks
             incident = {
                 "name": signal.title or f"Datadog Security Signal {signal.id}",
                 "occurred": (
@@ -1446,6 +1334,7 @@ def fetch_incidents(configuration: Configuration, params: dict) -> None:
                     if signal.timestamp
                     else to_datetime.isoformat()
                 ),
+                "details": signal.message,
                 "severity": map_severity_to_xsoar(signal.severity),
                 "dbotMirrorId": signal.id,
                 "rawJSON": json.dumps(signal.to_dict()),
@@ -1486,14 +1375,16 @@ def main() -> None:
     args: dict[str, Any] = demisto.args()
     demisto.debug(f"Command being called is {command}")
     try:
+        global SITE
+        SITE = params.get("site")
         configuration = Configuration()
         configuration.api_key["apiKeyAuth"] = params.get("api_key")
         configuration.api_key["appKeyAuth"] = params.get("app_key")
-        configuration.server_variables["site"] = params.get("site")
+        configuration.server_variables["site"] = SITE
 
         commands = {
             "datadog-security-signal-get": get_security_signal_command,
-            "datadog-security-signals-list": get_security_signals_command,
+            "datadog-security-signal-list": get_security_signal_list_command,
             "datadog-security-signal-assignee-update": update_security_signal_assignee_command,
             "datadog-security-signal-state-update": update_security_signal_state_command,
             "datadog-logs-search": logs_search_command,

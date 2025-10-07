@@ -42,6 +42,11 @@ def main():
             field_name = "".join(key.lower().split())
             custom_fields[field_name] = value
 
+        # Add owner from signal assignee
+        assignee_name = signal.get("triage", {}).get("assignee", {}).get("name")
+        if assignee_name:
+            custom_fields["owner"] = assignee_name
+
         demisto.debug(f"Custom fields: {custom_fields}")
 
         # Update incident

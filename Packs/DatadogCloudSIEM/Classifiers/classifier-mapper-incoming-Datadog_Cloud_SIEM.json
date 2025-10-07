@@ -58,9 +58,6 @@
                 "Datadog Security Signal Triage Archive Reason": {
                     "simple": "triage.archive_reason"
                 },
-                "Datadog Security Signal Triage Assignee UUID": {
-                    "simple": "triage.assignee.uuid"
-                },
                 "Datadog Security Signal Triage Assignee Name": {
                     "simple": "triage.assignee.name"
                 },

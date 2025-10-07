@@ -208,15 +208,6 @@
                             },
                             {
                                 "endCol": 2,
-                                "fieldId": "datadogsecuritysignaltriageassigneeuuid",
-                                "height": 22,
-                                "id": "field-datadogsecuritysignaltriageassigneeuuid",
-                                "index": 2,
-                                "sectionItemType": "field",
-                                "startCol": 0
-                            },
-                            {
-                                "endCol": 2,
                                 "fieldId": "datadogsecuritysignaltriagereason",
                                 "height": 22,
                                 "id": "field-datadogsecuritysignaltriagereason",

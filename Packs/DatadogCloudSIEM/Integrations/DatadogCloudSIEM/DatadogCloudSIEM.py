@@ -9,6 +9,7 @@ from datadog_api_client.model_utils import unset
 from datadog_api_client.v1.api.authentication_api import AuthenticationApi
 from datadog_api_client.v2.api.logs_api import LogsApi
 from datadog_api_client.v2.api.security_monitoring_api import SecurityMonitoringApi
+from datadog_api_client.v2.api.users_api import UsersApi
 from datadog_api_client.v2.model.logs_list_request import LogsListRequest
 from datadog_api_client.v2.model.logs_list_request_page import LogsListRequestPage
 from datadog_api_client.v2.model.logs_query_filter import LogsQueryFilter
@@ -75,7 +76,6 @@ AUTHENTICATION_ERROR_MSG = "Authentication Error: Invalid API Key. Make sure API
 
 @dataclass
 class Assignee:
-    uuid: str
     name: str
     handle: str
 
@@ -264,8 +264,8 @@ class SecuritySignal:
             # Convert assignee to dict if present
             if self.triage.assignee:
                 result["triage"]["assignee"] = {  # type: ignore
-                    "uuid": self.triage.assignee.uuid,
                     "name": self.triage.assignee.name,
+                    "handle": self.triage.assignee.handle,
                 }
 
         # Remove None values recursively
@@ -516,7 +516,6 @@ def parse_security_signal(data: dict[str, Any]) -> SecuritySignal:
             archive_comment=triage_d.get("archiveComment", ""),
             assignee=(
                 Assignee(
-                    uuid=assignee_d.get("uuid", ""),
                     name=assignee_d.get("name", "Unassigned"),
                     handle=assignee_d.get("handle", ""),
                 )
@@ -989,104 +988,33 @@ def get_security_signal_list_command(
         raise DemistoException(f"Failed to get security signals: {str(e)}")
 
 
-def update_security_signal_assignee_command(
+def update_security_signal_command(
     configuration: Configuration,
     args: dict[str, Any],
 ) -> CommandResults:
     """
-    Update the assignee of a security signal.
+    Update a security signal's assignee and/or state.
 
-    Assigns a security signal to a specific user by providing their UUID.
-    The signal must exist and the user must have appropriate permissions.
+    Updates the triage properties of a security signal including assignee, state,
+    and archive details. The signal must exist and the user must have appropriate permissions.
 
     Args:
         configuration: Datadog API configuration
-        args: Command arguments containing signal_id and assignee_uuid
+        args: Command arguments containing:
+            - signal_id (str, required): The ID of the signal to update
+            - assignee (str, optional): Name or email of user to assign (empty string to unassign)
+            - state (str, optional): New state (open, under_review, archived)
+            - reason (str, optional): Reason for state change
+            - comment (str, optional): Comment about the state change
 
     Returns:
         CommandResults: XSOAR command results with updated signal data
 
     Raises:
-        DemistoException: If signal_id is missing or API call fails
+        DemistoException: If signal_id is missing, invalid state provided, or API call fails
     """
     signal_id = args.get("signal_id")
-    assignee_uuid = args.get("assignee_uuid", "")  # unassign when ""
-
-    if not signal_id:
-        raise DemistoException("signal_id is required")
-
-    body = SecurityMonitoringSignalAssigneeUpdateRequest(
-        data=SecurityMonitoringSignalAssigneeUpdateData(
-            attributes=SecurityMonitoringSignalAssigneeUpdateAttributes(
-                assignee=SecurityMonitoringTriageUser(uuid=assignee_uuid),
-            ),
-        ),
-    )
-
-    with ApiClient(configuration) as api_client:
-        api_instance = SecurityMonitoringApi(api_client)
-        # Update the signal assignee
-        update_response = api_instance.edit_security_monitoring_signal_assignee(
-            signal_id=signal_id,
-            body=body,
-        )
-        update_data = update_response.to_dict().get("data", {})
-        update_attrs = update_data.get("attributes", {})
-
-        # Refetch the full signal
-        signal_response = api_instance.get_security_monitoring_signal(
-            signal_id=signal_id
-        )
-        data = signal_response.to_dict().get("data", {})
-        signal = parse_security_signal(data)
-
-        # Merge update response into signal triage assignee
-        if signal.triage and update_attrs.get("assignee"):
-            assignee_data = update_attrs["assignee"]
-            signal.triage.assignee = Assignee(
-                uuid=assignee_data.get("uuid", ""),
-                name=assignee_data.get("name", "Unassigned"),
-                handle=assignee_data.get("handle", ""),
-            )
-
-        signal_display = signal.to_display_dict()
-        readable_output = lookup_to_markdown(
-            [signal_display], "Security Signal Assignee Update"
-        )
-
-        return CommandResults(
-            readable_output=readable_output,
-            outputs_prefix=SECURITY_SIGNAL_CONTEXT_NAME,
-            outputs_key_field="id",
-            outputs=signal.to_dict(),
-        )
-
-
-def update_security_signal_state_command(
-    configuration: Configuration,
-    args: dict[str, Any],
-) -> CommandResults:
-    """
-    Update the state of a security signal.
-
-    Changes the triage state of a security signal (e.g., open, under_review, archived).
-    The signal must exist and the user must have appropriate permissions.
-
-    Args:
-        configuration: Datadog API configuration
-        args: A dictionary of arguments for the command.
-            - signal_id (str): The ID of the signal to update
-            - state (str): The new state for the signal (open, under_review, resolved, etc.)
-            - reason (str): Reason for the state change
-            - comment (str): Comment about the state change
-
-    Returns:
-        CommandResults: XSOAR command results with updated signal data
-
-    Raises:
-        DemistoException: If signal_id or state is missing, or API call fails
-    """
-    signal_id = args.get("signal_id")
+    assignee = args.get("assignee")
     state = args.get("state")
     reason = args.get("reason")
     comment = args.get("comment")
@@ -1094,57 +1022,99 @@ def update_security_signal_state_command(
     if not signal_id:
         raise DemistoException("signal_id is required")
 
-    if not state:
-        raise DemistoException("state is required")
+    # At least one update parameter must be provided
+    if assignee is None and state is None:
+        raise DemistoException("At least one of 'assignee' or 'state' must be provided")
 
-    # Valid states based on Datadog API documentation
-    valid_states = ["open", "under_review", "archived"]
-    if state not in valid_states:
-        raise DemistoException(
-            f"Invalid state '{state}'. Valid states are: {', '.join(valid_states)}"
-        )
-
-    body = SecurityMonitoringSignalStateUpdateRequest(
-        data=SecurityMonitoringSignalStateUpdateData(
-            attributes=SecurityMonitoringSignalStateUpdateAttributes(
-                state=state,
-                reason=reason,
-                comment=comment,
-            ),
-        ),
-    )
+    # Validate state if provided
+    if state is not None:
+        valid_states = ["open", "under_review", "archived"]
+        if state not in valid_states:
+            raise DemistoException(
+                f"Invalid state '{state}'. Valid states are: {', '.join(valid_states)}"
+            )
 
     with ApiClient(configuration) as api_client:
         api_instance = SecurityMonitoringApi(api_client)
-        # Update the signal state
-        update_response = api_instance.edit_security_monitoring_signal_state(
-            signal_id=signal_id,
-            body=body,
-        )
-        update_data = update_response.to_dict().get("data", {})
-        update_attrs = update_data.get("attributes", {})
+        user_api_instance = UsersApi(api_client)
 
-        # Refetch the full signal
+        # Refetch the full original signal
         signal_response = api_instance.get_security_monitoring_signal(
             signal_id=signal_id
         )
         data = signal_response.to_dict().get("data", {})
         signal = parse_security_signal(data)
 
-        # Merge update response into signal triage
-        if signal.triage and update_attrs:
-            signal.triage.state = update_attrs.get("state", signal.triage.state)
-            signal.triage.archive_comment = update_attrs.get(
-                "archive_comment", signal.triage.archive_comment
+        # Resolve assignee_uuid if provided
+        assignee_uuid = None
+        if assignee is not None:
+            res = user_api_instance.list_users(
+                filter_status="Active,Pending",
+                filter=assignee,
             )
-            signal.triage.archive_reason = update_attrs.get(
-                "archive_reason", signal.triage.archive_reason
+            users = res.get("data", [])
+            if len(users) == 0:
+                raise DemistoException(
+                    f"Could not determine any user for name or email: {assignee}"
+                )
+            if len(users) > 1:
+                users = set([u.get("attributes", {}).get("email", "") for u in users])
+                raise DemistoException(
+                    f"Could not determine the user to assign to from list: {users}"
+                )
+            assignee_uuid = users[0].get("id")
+
+        # Always update assignee - either with found assignee_uuid or by unassigning
+        assignee_body = SecurityMonitoringSignalAssigneeUpdateRequest(
+            data=SecurityMonitoringSignalAssigneeUpdateData(
+                attributes=SecurityMonitoringSignalAssigneeUpdateAttributes(
+                    assignee=SecurityMonitoringTriageUser(uuid=assignee_uuid or ""),
+                ),
+            ),
+        )
+        update_response = api_instance.edit_security_monitoring_signal_assignee(
+            signal_id=signal_id,
+            body=assignee_body,
+        )
+        # Merge assignee update into signal
+        update_attrs = update_response.to_dict().get("data", {}).get("attributes", {})
+        if signal.triage and update_attrs.get("assignee"):
+            assignee_data = update_attrs["assignee"]
+            signal.triage.assignee = Assignee(
+                name=assignee_data.get("name", "Unassigned"),
+                handle=assignee_data.get("handle", ""),
             )
 
+        # Update state if provided
+        if state is not None:
+            state_body = SecurityMonitoringSignalStateUpdateRequest(
+                data=SecurityMonitoringSignalStateUpdateData(
+                    attributes=SecurityMonitoringSignalStateUpdateAttributes(
+                        state=state,
+                        reason=reason,
+                        comment=comment,
+                    ),
+                ),
+            )
+            update_response = api_instance.edit_security_monitoring_signal_state(
+                signal_id=signal_id,
+                body=state_body,
+            )
+            # Merge state update into signal
+            update_attrs = (
+                update_response.to_dict().get("data", {}).get("attributes", {})
+            )
+            if signal.triage and update_attrs:
+                signal.triage.state = update_attrs.get("state", signal.triage.state)
+                signal.triage.archive_comment = update_attrs.get(
+                    "archive_comment", signal.triage.archive_comment
+                )
+                signal.triage.archive_reason = update_attrs.get(
+                    "archive_reason", signal.triage.archive_reason
+                )
+
         signal_display = signal.to_display_dict()
-        readable_output = lookup_to_markdown(
-            [signal_display], "Security Signal State Update"
-        )
+        readable_output = lookup_to_markdown([signal_display], "Security Signal Update")
 
         return CommandResults(
             readable_output=readable_output,
@@ -1327,6 +1297,8 @@ def fetch_incidents(
         incidents = []
         latest_signal_time = last_fetch_time
         for signal in signals:
+            signal_dict = signal.to_dict()
+            owner = signal_dict.get("triage", {}).get("assignee", {}).get("name", "")
             incident = {
                 "name": signal.title or f"Datadog Security Signal {signal.id}",
                 "occurred": (
@@ -1337,7 +1309,8 @@ def fetch_incidents(
                 "details": signal.message,
                 "severity": map_severity_to_xsoar(signal.severity),
                 "dbotMirrorId": signal.id,
-                "rawJSON": json.dumps(signal.to_dict()),
+                "owner": owner,
+                "rawJSON": json.dumps(signal_dict),
             }
 
             incidents.append(incident)
@@ -1385,8 +1358,7 @@ def main() -> None:
         commands = {
             "datadog-security-signal-get": get_security_signal_command,
             "datadog-security-signal-list": get_security_signal_list_command,
-            "datadog-security-signal-assignee-update": update_security_signal_assignee_command,
-            "datadog-security-signal-state-update": update_security_signal_state_command,
+            "datadog-security-signal-update": update_security_signal_command,
             "datadog-logs-search": logs_search_command,
         }
         if command == "test-module":

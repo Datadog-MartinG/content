@@ -82,7 +82,7 @@ script:
     - arguments:
         - description: The unique identifier of the security signal to retrieve. If not provided, will attempt to get it from the current incident.
           name: signal_id
-      name: datadog-security-signal-get
+      name: datadog-signal-get
       description: Get a specific security signal by ID from Datadog Cloud SIEM.
       outputs:
         - contextPath: Datadog.SecuritySignal.id
@@ -178,7 +178,7 @@ script:
         - description: Maximum number of results to return. If page_size is specified, limit is ignored.
           name: limit
           defaultvalue: "50"
-      name: datadog-security-signal-list
+      name: datadog-signal-list
       description: Get a list of security signals from Datadog Cloud SIEM with optional filtering and pagination.
       outputs:
         - contextPath: Datadog.SecuritySignal.id
@@ -248,7 +248,7 @@ script:
             - under_review
             - archived
         - description: Reason for the state change (used when changing state to archived).
-          name: reason
+          name: archive_reason
           auto: PREDEFINED
           predefined:
             - none
@@ -259,9 +259,9 @@ script:
             - other
             - true_positive_benign
             - true_positive_malicious
-        - description: Comment about the state change (used when changing state).
-          name: comment
-      name: datadog-security-signal-update
+        - description: Comment about the state change (used when changing state to archived).
+          name: archive_comment
+      name: datadog-signal-update
       description: Update a security signal's assignee and/or state in Datadog Cloud SIEM. Can update assignee only, state only, or both in a single command.
       outputs:
         - contextPath: Datadog.SecuritySignal.id
@@ -363,6 +363,33 @@ script:
         - contextPath: Datadog.SecurityRule.raw
           description: The raw rule object returned by the API.
           type: Unknown
+    - arguments:
+        - description: The event ID of the security signal to list comments for. If not provided, will attempt to get it from the current incident.
+          name: event_id
+      name: datadog-signal-comment-list
+      description: List all comments for a security signal in Datadog Cloud SIEM.
+      outputs:
+        - contextPath: Datadog.SecurityComment.id
+          description: The unique identifier of the comment.
+          type: String
+        - contextPath: Datadog.SecurityComment.created_at
+          description: The timestamp when the comment was created.
+          type: String
+        - contextPath: Datadog.SecurityComment.user_uuid
+          description: The UUID of the user who created the comment.
+          type: String
+        - contextPath: Datadog.SecurityComment.text
+          description: The comment text content.
+          type: String
+        - contextPath: Datadog.SecurityComment.user.uuid
+          description: The UUID of the user who created the comment.
+          type: String
+        - contextPath: Datadog.SecurityComment.user.name
+          description: The name of the user who created the comment.
+          type: String
+        - contextPath: Datadog.SecurityComment.user.handle
+          description: The handle of the user who created the comment.
+          type: String
     - arguments:
         - description: Custom search query string. Uses Datadog search syntax. Required unless running from an incident with a Datadog Security Signal (will use rule's query as fallback).
           name: query

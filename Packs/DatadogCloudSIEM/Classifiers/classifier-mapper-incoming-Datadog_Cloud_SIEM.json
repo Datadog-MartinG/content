@@ -10,6 +10,9 @@
                 "Datadog Security Signal ID": {
                     "simple": "id"
                 },
+                "Datadog Security Signal Event ID": {
+                    "simple": "event_id"
+                },
                 "Datadog Security Signal Title": {
                     "simple": "title"
                 },

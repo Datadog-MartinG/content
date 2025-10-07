@@ -14,9 +14,7 @@ def main():
             return_error("No Datadog Security Signal ID found in incident.")
 
         # Fetch the signal from Datadog
-        result = demisto.executeCommand(
-            "datadog-security-signal-get", {"signal_id": signal_id}
-        )
+        result = demisto.executeCommand("datadog-signal-get", {"signal_id": signal_id})
 
         if not result or isError(result):
             return_error(f"Failed to fetch signal: {get_error(result)}")
@@ -50,8 +48,12 @@ def main():
         # Close incident if signal is archived
         signal_state = signal.get("triage", {}).get("state")
         if signal_state == "archived":
-            custom_fields["closeReason"] = signal.get("triage", {}).get("archive_reason", "Other")
-            custom_fields["closeNotes"] = signal.get("triage", {}).get("archive_comment", "")
+            custom_fields["closeReason"] = signal.get("triage", {}).get(
+                "archive_reason", "Other"
+            )
+            custom_fields["closeNotes"] = signal.get("triage", {}).get(
+                "archive_comment", ""
+            )
 
         demisto.debug(f"Custom fields: {custom_fields}")
 

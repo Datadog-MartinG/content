@@ -65,8 +65,9 @@ DEFAULT_TO_DATE = "now"
 INTEGRATION_NAME = "DatadogCloudSIEM"
 INTEGRATION_CONTEXT_NAME = "Datadog"
 SECURITY_SIGNAL_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecuritySignal"
-LOG_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.Log"
 SECURITY_RULE_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecurityRule"
+SECURITY_COMMENT_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecurityComment"
+LOG_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.Log"
 NO_RESULTS_FROM_API_MSG = "API didn't return any results for given search parameters."
 ERROR_MSG = "Something went wrong!\n"
 AUTHENTICATION_ERROR_MSG = "Authentication Error: Invalid API Key. Make sure API Key and Server URL are correct."
@@ -87,6 +88,52 @@ class Triage:
     archive_comment: str
     archive_reason: str
     assignee: Assignee | None = None
+
+
+@dataclass
+class Comment:
+    id: str
+    created_at: str
+    user_uuid: str
+    text: str
+    user_name: str | None = None
+    user_handle: str | None = None
+
+    def to_display_dict(self) -> dict[str, Any]:
+        """
+        Convert Comment to a dictionary optimized for human-readable display.
+
+        Returns:
+            Dict[str, Any]: Dictionary with display-friendly field names and values.
+        """
+        return {
+            "Created At": self.created_at,
+            "User": f"{self.user_name} <{self.user_handle}>" or self.user_uuid,
+            "Text": self.text,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Convert Comment to a plain dictionary for XSOAR context output.
+
+        Returns:
+            Dict[str, Any]: Dictionary for context output.
+        """
+        result = {
+            "id": self.id,
+            "created_at": self.created_at,
+            "user_uuid": self.user_uuid,
+            "text": self.text,
+        }
+
+        if self.user_name or self.user_handle:
+            result["user"] = {  # type: ignore
+                "uuid": self.user_uuid,
+                "name": self.user_name,
+                "handle": self.user_handle,
+            }
+
+        return remove_none_values(result)
 
 
 @dataclass
@@ -146,7 +193,6 @@ class SecurityRule:
             Dict[str, Any]: Dictionary with display-friendly field names and values.
         """
         return {
-            "ID": self.id,
             "Name": self.name,
             "Type": self.type,
             "Is Enabled": self.is_enabled,
@@ -209,7 +255,6 @@ class Log:
             Dict[str, Any]: Dictionary with display-friendly field names and values.
         """
         return {
-            "ID": self.id,
             "Timestamp": str(self.timestamp) if self.timestamp else None,
             "Message": (
                 self.message[:100] + "..."
@@ -259,6 +304,7 @@ class Log:
 @dataclass
 class SecuritySignal:
     id: str
+    event_id: str
     timestamp: datetime | None = None
     host: str | None = None
     service: str | None = None
@@ -319,6 +365,7 @@ class SecuritySignal:
         """
         result = {
             "id": self.id,
+            "event_id": self.event_id,
             "timestamp": str(self.timestamp) if self.timestamp else None,
             "host": self.host,
             "service": self.service,
@@ -544,6 +591,32 @@ def flatten_tag_map(tag_map: dict[str, Any]) -> list[str]:
     return flat
 
 
+def parse_security_comment(data: dict[str, Any]) -> Comment:
+    """
+    Parse raw comment data from Datadog API into a structured Comment object.
+
+    Args:
+        data: Raw comment data from Datadog API response containing 'id' and 'attributes'
+
+    Returns:
+        Comment: Structured dataclass containing parsed comment information
+
+    Example:
+        >>> data = {'id': '123', 'attributes': {'comment_id': '123', 'created_at': '2025-10-07', 'text': 'test', 'user_uuid': 'abc'}}
+        >>> comment = parse_security_comment(data)
+        >>> comment.text
+        'test'
+    """
+    attrs = data.get("attributes", {})
+
+    return Comment(
+        id=data.get("id", "") or attrs.get("comment_id", ""),
+        created_at=attrs.get("created_at", ""),
+        user_uuid=attrs.get("user_uuid", ""),
+        text=attrs.get("text", ""),
+    )
+
+
 def parse_security_signal(data: dict[str, Any]) -> SecuritySignal:
     """
     Parse raw security signal data from Datadog API into a structured SecuritySignal object.
@@ -571,6 +644,13 @@ def parse_security_signal(data: dict[str, Any]) -> SecuritySignal:
         **data.get("attributes", {}).get("attributes", {}),
         **data.get("attributes", {}),
     }
+
+    signal_id = data.get("id")
+    event_id = data.get("event_id") or attrs.get("event_id") or attrs.get("id")
+
+    if not signal_id or not event_id:
+        raise ValueError("Cannot get signal_id and/or event_id")
+
     custom = {
         **data.get("custom", {}),
         **attrs.get("custom", {}),
@@ -610,7 +690,8 @@ def parse_security_signal(data: dict[str, Any]) -> SecuritySignal:
     service_str = ", ".join(services) if services else None
 
     return SecuritySignal(
-        id=data.get("id", "security-signal"),
+        id=signal_id,
+        event_id=event_id,
         timestamp=attrs.get("timestamp"),
         host=attrs.get("host"),
         service=service_str,
@@ -1143,8 +1224,8 @@ def update_security_signal_command(
     signal_id = args.get("signal_id")
     assignee = args.get("assignee")
     state = args.get("state")
-    reason = args.get("reason")
-    comment = args.get("comment")
+    reason = args.get("archive_reason")
+    comment = args.get("archive_comment")
 
     # If signal_id not provided, try to get it from the current incident
     if not signal_id:
@@ -1171,6 +1252,9 @@ def update_security_signal_command(
         api_instance = SecurityMonitoringApi(api_client)
         user_api_instance = UsersApi(api_client)
 
+        # TODO: move this call at the end and remove merging partial result in
+        # when fetch security signal endpoint is fixed and consistent.
+        #
         # Refetch the full original signal
         signal_response = api_instance.get_security_monitoring_signal(
             signal_id=signal_id
@@ -1178,45 +1262,51 @@ def update_security_signal_command(
         data = signal_response.to_dict().get("data", {})
         signal = parse_security_signal(data)
 
-        # Resolve assignee_uuid if provided
-        assignee_uuid = None
         if assignee is not None:
-            res = user_api_instance.list_users(
-                filter_status="Active,Pending",
-                filter=assignee,
-            )
-            users = res.get("data", [])
-            if len(users) == 0:
-                raise DemistoException(
-                    f"Could not determine any user for name or email: {assignee}"
-                )
-            if len(users) > 1:
-                users = set([u.get("attributes", {}).get("email", "") for u in users])
-                raise DemistoException(
-                    f"Could not determine the user to assign to from list: {users}"
-                )
-            assignee_uuid = users[0].get("id")
+            assignee_uuid = ""
 
-        # Always update assignee - either with found assignee_uuid or by unassigning
-        assignee_body = SecurityMonitoringSignalAssigneeUpdateRequest(
-            data=SecurityMonitoringSignalAssigneeUpdateData(
-                attributes=SecurityMonitoringSignalAssigneeUpdateAttributes(
-                    assignee=SecurityMonitoringTriageUser(uuid=assignee_uuid or ""),
+            # Resolve assignee_uuid if assignee is provided
+            if assignee != "":
+                res = user_api_instance.list_users(
+                    filter_status="Active,Pending",
+                    filter=assignee,
+                )
+                users = res.get("data", [])
+                if len(users) == 0:
+                    raise DemistoException(
+                        f"Could not determine any user for name or email: {assignee}"
+                    )
+                if len(users) > 1:
+                    users = set(
+                        [u.get("attributes", {}).get("email", "") for u in users]
+                    )
+                    raise DemistoException(
+                        f"Could not determine the user to assign to from list: {users}"
+                    )
+                assignee_uuid = users[0].get("id")
+
+            # Always update assignee - either with found assignee_uuid or by unassigning
+            assignee_body = SecurityMonitoringSignalAssigneeUpdateRequest(
+                data=SecurityMonitoringSignalAssigneeUpdateData(
+                    attributes=SecurityMonitoringSignalAssigneeUpdateAttributes(
+                        assignee=SecurityMonitoringTriageUser(uuid=assignee_uuid or ""),
+                    ),
                 ),
-            ),
-        )
-        update_response = api_instance.edit_security_monitoring_signal_assignee(
-            signal_id=signal_id,
-            body=assignee_body,
-        )
-        # Merge assignee update into signal
-        update_attrs = update_response.to_dict().get("data", {}).get("attributes", {})
-        if signal.triage and update_attrs.get("assignee"):
-            assignee_data = update_attrs["assignee"]
-            signal.triage.assignee = Assignee(
-                name=assignee_data.get("name", "Unassigned"),
-                handle=assignee_data.get("handle", ""),
             )
+            update_response = api_instance.edit_security_monitoring_signal_assignee(
+                signal_id=signal_id,
+                body=assignee_body,
+            )
+            # Merge assignee update into signal
+            update_attrs = (
+                update_response.to_dict().get("data", {}).get("attributes", {})
+            )
+            if signal.triage and update_attrs.get("assignee"):
+                assignee_data = update_attrs["assignee"]
+                signal.triage.assignee = Assignee(
+                    name=assignee_data.get("name", "Unassigned"),
+                    handle=assignee_data.get("handle", ""),
+                )
 
         # Update state if provided
         if state is not None:
@@ -1255,6 +1345,133 @@ def update_security_signal_command(
             outputs_key_field="id",
             outputs=signal.to_dict(),
         )
+
+
+def add_security_signal_comment_command(
+    configuration: Configuration,
+    args: dict[str, Any],
+) -> CommandResults:
+    """
+    Add a comment to a security signal.
+
+    Args:
+        configuration: Datadog API configuration
+        args: Command arguments containing:
+            - event_id (str, required): The event ID of the security signal
+            - comment (str, required): The comment text to add
+
+    Returns:
+        CommandResults: XSOAR command results with comment data
+
+    Raises:
+        DemistoException: If required parameters are missing or API call fails
+    """
+    event_id = args.get("event_id")
+    comment = args.get("comment")
+
+    if not event_id:
+        raise DemistoException("event_id is required")
+    if not comment:
+        raise DemistoException("comment is required")
+
+    try:
+        ##
+
+        return CommandResults(
+            readable_output="Comment added successfully (not implemented)",
+        )
+
+    except Exception as e:
+        raise DemistoException(f"Failed to add comment to security signal: {str(e)}")
+
+
+def list_security_signal_comments_command(
+    configuration: Configuration,
+    args: dict[str, Any],
+) -> CommandResults:
+    """
+    List all comments for a security signal.
+
+    Args:
+        configuration: Datadog API configuration
+        args: Command arguments containing:
+            - event_id (str, optional): The event ID of the security signal
+
+    Returns:
+        CommandResults: XSOAR command results with list of comments
+
+    Raises:
+        DemistoException: If event_id is missing or API call fails
+    """
+    event_id = args.get("event_id")
+
+    # If event_id not provided, try to get it from the current incident
+    if not event_id:
+        incident = demisto.incident()
+        event_id = incident.get("CustomFields", {}).get("datadogsecuritysignaleventid")
+        if not event_id:
+            raise DemistoException(
+                "event_id is required. Provide it as an argument or run from an incident with a Datadog Security Signal Event ID."
+            )
+
+    try:
+        # This is not exposed by the Datadog API client, but still accessible via API tokens
+        comments_response = requests.get(
+            f"https://app.{SITE}/api/ui/security/appsec/comment/signal/{event_id}",
+            headers={
+                "dd-api-key": configuration.api_key["apiKeyAuth"],
+                "dd-application-key": configuration.api_key["appKeyAuth"],
+            },
+        )
+        data = comments_response.json().get("data", [])
+        comments = [parse_security_comment(c) for c in data]
+
+        # Resolve all unique user UUIDs in bulk
+        with ApiClient(configuration) as api_client:
+            user_api_instance = UsersApi(api_client)
+            unique_uuids = {c.user_uuid for c in comments}
+            user_map = {}  # uuid -> (name, handle)
+
+            for uuid in unique_uuids:
+                try:
+                    user_response = user_api_instance.get_user(user_id=uuid)
+                    user_data = user_response.to_dict().get("data", {})
+                    attrs = user_data.get("attributes", {})
+                    user_map[uuid] = (attrs.get("name"), attrs.get("handle"))
+                except Exception:
+                    pass  # Keep UUID if resolution fails
+
+            # Enrich comments with user info
+            for comment in comments:
+                if comment.user_uuid in user_map:
+                    comment.user_name, comment.user_handle = user_map[comment.user_uuid]
+
+        if not comments:
+            readable_output = f"No comments found for security signal: {event_id}"
+            return CommandResults(
+                readable_output=readable_output,
+                outputs_prefix=SECURITY_COMMENT_CONTEXT_NAME,
+                outputs_key_field="id",
+                outputs=[],
+            )
+
+        # Prepare outputs
+        display_data = [c.to_display_dict() for c in comments]
+        outputs = [c.to_dict() for c in comments]
+
+        readable_output = lookup_to_markdown(
+            display_data, f"Security Signal Comments ({len(comments)} results)"
+        )
+
+        return CommandResults(
+            readable_output=readable_output,
+            outputs_prefix=SECURITY_COMMENT_CONTEXT_NAME,
+            outputs_key_field="id",
+            outputs=outputs,
+        )
+
+    except Exception as e:
+        raise DemistoException(f"Failed to list comments: {str(e)}")
 
 
 def logs_query_command(
@@ -1371,10 +1588,17 @@ def logs_query_command(
                 logs.append(log.to_dict())
                 display_data.append(log.to_display_dict())
 
-            # Create human-readable output
-            readable_output = lookup_to_markdown(
-                display_data, f"Security Logs ({len(logs)} results)"
-            )
+            # Build Datadog logs URL with query parameters
+            from urllib.parse import quote
+
+            from_ms = int(from_datetime.timestamp() * 1000) if from_datetime else 0
+            to_ms = int(to_datetime.timestamp() * 1000) if to_datetime else 0
+            logs_url = f"https://app.{SITE}/logs?query={quote(search_query)}&from_ts={from_ms}&to_ts={to_ms}&live=false"
+
+            # Create human-readable output with query info
+            query_info = f"**Query:** `{search_query}`\n**Results:** {len(logs)}\n**URL:** {logs_url}\n\n"
+            logs_table = lookup_to_markdown(display_data, "Security Logs")
+            readable_output = query_info + logs_table
 
             return CommandResults(
                 readable_output=readable_output,
@@ -1517,10 +1741,12 @@ def main() -> None:
         configuration.server_variables["site"] = SITE
 
         commands = {
-            "datadog-security-signal-get": get_security_signal_command,
-            "datadog-security-signal-list": get_security_signal_list_command,
-            "datadog-security-signal-update": update_security_signal_command,
-            "datadog-security-rule-get": get_security_rule_command,
+            "datadog-signal-get": get_security_signal_command,
+            "datadog-signal-list": get_security_signal_list_command,
+            "datadog-signal-update": update_security_signal_command,
+            "datadog-signal-comment-add": add_security_signal_comment_command,
+            "datadog-signal-comment-list": list_security_signal_comments_command,
+            "datadog-rule-get": get_security_rule_command,
             "datadog-logs-query": logs_query_command,
         }
         if command == "test-module":

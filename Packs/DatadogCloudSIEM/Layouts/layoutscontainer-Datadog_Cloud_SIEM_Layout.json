@@ -138,37 +138,10 @@
                             },
                             {
                                 "endCol": 2,
-                                "fieldId": "datadogsecuritysignalrulename",
-                                "height": 22,
-                                "id": "field-datadogsecuritysignalrulename",
-                                "index": 1,
-                                "sectionItemType": "field",
-                                "startCol": 0
-                            },
-                            {
-                                "endCol": 2,
                                 "fieldId": "datadogsecuritysignalruleid",
                                 "height": 22,
                                 "id": "field-datadogsecuritysignalruleid",
                                 "index": 2,
-                                "sectionItemType": "field",
-                                "startCol": 0
-                            },
-                            {
-                                "endCol": 2,
-                                "fieldId": "datadogsecuritysignalruletype",
-                                "height": 22,
-                                "id": "field-datadogsecuritysignalruletype",
-                                "index": 3,
-                                "sectionItemType": "field",
-                                "startCol": 0
-                            },
-                            {
-                                "endCol": 2,
-                                "fieldId": "datadogsecuritysignalruletags",
-                                "height": 22,
-                                "id": "field-datadogsecuritysignalruletags",
-                                "index": 4,
                                 "sectionItemType": "field",
                                 "startCol": 0
                             }

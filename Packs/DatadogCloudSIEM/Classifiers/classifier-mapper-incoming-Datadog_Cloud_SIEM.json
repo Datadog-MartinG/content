@@ -37,15 +37,6 @@
                 "Datadog Security Signal Rule ID": {
                     "simple": "rule.id"
                 },
-                "Datadog Security Signal Rule Name": {
-                    "simple": "rule.name"
-                },
-                "Datadog Security Signal Rule Type": {
-                    "simple": "rule.type"
-                },
-                "Datadog Security Signal Rule Tags": {
-                    "simple": "rule.tags"
-                },
                 "Datadog Security Signal Rule URL": {
                     "simple": "rule.url"
                 },

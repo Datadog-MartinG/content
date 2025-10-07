@@ -8,7 +8,8 @@
       "Bash(do sed -i '' 's/\"\"isReadOnly\"\": false/\"\"isReadOnly\"\": true/g' \"$file\")",
       "WebSearch",
       "WebFetch(domain:live.paloaltonetworks.com)",
-      "WebFetch(domain:xsoar.pan.dev)"
+      "WebFetch(domain:xsoar.pan.dev)",
+      "WebFetch(domain:docs.datadoghq.com)"
     ],
     "deny": [],
     "ask": []

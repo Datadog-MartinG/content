@@ -66,6 +66,7 @@ INTEGRATION_NAME = "DatadogCloudSIEM"
 INTEGRATION_CONTEXT_NAME = "Datadog"
 SECURITY_SIGNAL_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecuritySignal"
 LOG_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.Log"
+SECURITY_RULE_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecurityRule"
 NO_RESULTS_FROM_API_MSG = "API didn't return any results for given search parameters."
 ERROR_MSG = "Something went wrong!\n"
 AUTHENTICATION_ERROR_MSG = "Authentication Error: Invalid API Key. Make sure API Key and Server URL are correct."
@@ -89,11 +90,98 @@ class Triage:
 
 
 @dataclass
-class Rule:
+class SecurityRule:
     id: str
     name: str
     type: str
-    tags: list[str]
+    is_enabled: bool
+    created_at: str | None = None
+    message: str | None = None
+    queries: list[dict[str, Any]] | None = None
+    cases: list[dict[str, Any]] | None = None
+    options: dict[str, Any] | None = None
+    tags: list[str] | None = None
+
+    # Raw rule data
+    raw: dict[str, Any] | None = None
+
+    def extract_query(self) -> str:
+        """
+        Extract and combine log queries from this rule's queries using OR operator.
+
+        Returns:
+            str: Combined query string using OR, or "*" if no queries found
+
+        Example:
+            >>> rule = SecurityRule(id="123", queries=[{"query": "source:nginx"}, {"query": "source:apache"}])
+            >>> rule.extract_query()
+            "(source:nginx) OR (source:apache)"
+        """
+        if not self.queries or len(self.queries) == 0:
+            return "*"
+
+        # Extract all query strings, filtering out None/empty values
+        query_strings = []
+        for query_obj in self.queries:
+            query_str = query_obj.get("query")
+            if query_str:
+                query_strings.append(query_str)
+
+        if not query_strings:
+            return "*"
+
+        # If only one query, return it directly
+        if len(query_strings) == 1:
+            return query_strings[0]
+
+        # Combine multiple queries with OR
+        combined = " OR ".join(f"({q})" for q in query_strings)
+        return combined
+
+    def to_display_dict(self) -> dict[str, Any]:
+        """
+        Convert SecurityRule to a dictionary optimized for human-readable display.
+
+        Returns:
+            Dict[str, Any]: Dictionary with display-friendly field names and values.
+        """
+        return {
+            "ID": self.id,
+            "Name": self.name,
+            "Type": self.type,
+            "Is Enabled": self.is_enabled,
+            "Created At": self.created_at,
+            "Tags": (
+                ", ".join(self.tags[:5]) + ("..." if len(self.tags) > 5 else "")
+                if self.tags
+                else None
+            ),
+            "URL": build_security_rule_url(self.id),
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Convert SecurityRule to a plain dictionary for XSOAR context output.
+
+        Returns:
+            Dict[str, Any]: Dictionary for context output.
+        """
+        result = {
+            "id": self.id,
+            "name": self.name,
+            "type": self.type,
+            "isEnabled": self.is_enabled,
+            "createdAt": self.created_at,
+            "message": self.message,
+            "queries": self.queries,
+            "cases": self.cases,
+            "options": self.options,
+            "tags": self.tags,
+            "url": build_security_rule_url(self.id),
+            "raw": self.raw,
+        }
+
+        return remove_none_values(result)
 
 
 @dataclass
@@ -177,7 +265,7 @@ class SecuritySignal:
     severity: str | None = None
     title: str | None = None
     message: str | None = None
-    rule: Rule | None = None
+    rule_id: str | None = None
     triage: Triage | None = None
     tags: list[str] | None = None
     triggering_log_id: str | None = None
@@ -200,8 +288,7 @@ class SecuritySignal:
             "Message": self.message,
             "Severity": self.severity,
             "State": self.triage.state if self.triage else None,
-            "Rule Name": self.rule.name if self.rule else None,
-            "Rule URL": build_security_rule_url(self.rule.id) if self.rule else None,
+            "Rule URL": build_security_rule_url(self.rule_id) if self.rule_id else None,
             "Host": self.host,
             "Services": self.service,
             "Timestamp": str(self.timestamp) if self.timestamp else None,
@@ -245,13 +332,10 @@ class SecuritySignal:
         }
 
         # Convert rule to dict if present
-        if self.rule:
+        if self.rule_id:
             result["rule"] = {
-                "id": self.rule.id,
-                "name": self.rule.name,
-                "type": self.rule.type,
-                "tags": self.rule.tags,
-                "url": build_security_rule_url(self.rule.id),
+                "id": self.rule_id,
+                "url": build_security_rule_url(self.rule_id),
             }
 
         # Convert triage to dict if present
@@ -499,16 +583,6 @@ def parse_security_signal(data: dict[str, Any]) -> SecuritySignal:
     rule_d = workflow.get("rule", {})
     triage_d = workflow.get("triage", {})
     assignee_d = triage_d.get("assignee", {})
-    rule = (
-        Rule(
-            id=rule_d.get("id", ""),
-            name=rule_d.get("name", ""),
-            type=rule_d.get("type", ""),
-            tags=as_list(rule_d.get("tags", "")),
-        )
-        if rule_d
-        else None
-    )
     triage = (
         Triage(
             state=triage_d.get("state", ""),
@@ -543,10 +617,41 @@ def parse_security_signal(data: dict[str, Any]) -> SecuritySignal:
         severity=attrs.get("status", "info"),
         title=custom.get("title") or attrs.get("title") or rule_d.get("name"),
         message=attrs.get("message"),
-        rule=rule,
+        rule_id=rule_d.get("id", ""),
         triage=triage,
         tags=tags,
         triggering_log_id=attrs.get("triggering_log_id"),
+        raw=data,
+    )
+
+
+def parse_security_rule(data: dict[str, Any]) -> SecurityRule:
+    """
+    Parse raw security rule data from Datadog API into a structured SecurityRule object.
+
+    Args:
+        data (Dict[str, Any]): Raw security rule data from Datadog API response.
+
+    Returns:
+        SecurityRule: Structured dataclass containing parsed rule information.
+
+    Example:
+        >>> api_data = {"id": "rule-123", "name": "My Rule", ...}
+        >>> rule = parse_security_rule(api_data)
+        >>> rule.id
+        "rule-123"
+    """
+    return SecurityRule(
+        id=data.get("id", ""),
+        name=data.get("name", ""),
+        type=data.get("type", ""),
+        is_enabled=data.get("isEnabled", False),
+        created_at=data.get("createdAt"),
+        message=data.get("message"),
+        queries=data.get("queries"),
+        cases=data.get("cases"),
+        options=data.get("options"),
+        tags=as_list(data.get("tags")),
         raw=data,
     )
 
@@ -645,53 +750,6 @@ def security_signals_search_query(args: dict[str, Any]) -> str:
     query = args.get("query")
     if query:
         query_parts.append(str(query))
-
-    return " AND ".join(query_parts) if query_parts else "*"
-
-
-def build_logs_search_query(args: dict[str, Any]) -> str:
-    """
-    Build a Datadog search query string for filtering logs based on provided arguments.
-
-    Constructs a query using Datadog's search syntax with AND operators between conditions.
-    Supports filtering by service, host, source, status, and custom query.
-
-    Args:
-        args (Dict[str, Any]): Dictionary containing search parameters. Supported keys:
-            - query (str): Custom search query
-            - service (str): Service name filter
-            - host (str): Host name filter
-            - source (str): Log source filter
-            - status (str): Log status/level filter (info, warn, error, etc.)
-
-    Returns:
-        str: Formatted query string for Datadog Logs API. Returns "*" if no conditions provided.
-
-    Examples:
-        >>> args = {"service": "web-api", "status": "error"}
-        >>> build_logs_search_query(args)
-        "service:web-api AND status:error"
-
-        >>> build_logs_search_query({})
-        "*"
-    """
-    query_parts: list[str] = []
-
-    query = args.get("query")
-    if query:
-        query_parts.append(str(query))
-
-    if args.get("service"):
-        query_parts.append(f"service:{args.get('service')}")
-
-    if args.get("host"):
-        query_parts.append(f"host:{args.get('host')}")
-
-    if args.get("source"):
-        query_parts.append(f"source:{args.get('source')}")
-
-    if args.get("status"):
-        query_parts.append(f"status:{args.get('status')}")
 
     return " AND ".join(query_parts) if query_parts else "*"
 
@@ -904,6 +962,70 @@ def get_security_signal_command(
 
     except Exception as e:
         raise DemistoException(f"Failed to get security signal {signal_id}: {str(e)}")
+
+
+def get_security_rule_command(
+    configuration: Configuration,
+    args: dict[str, Any],
+) -> CommandResults:
+    """
+    Get a specific security monitoring rule by ID.
+
+    Args:
+        configuration: Datadog API configuration
+        args: Command arguments containing:
+            - rule_id (str, optional): The ID of the security rule to retrieve - fallback to incident rule id if not provided
+
+    Returns:
+        CommandResults: XSOAR command results with rule data
+
+    Raises:
+        DemistoException: If rule_id is not provided or API call fails
+    """
+    rule_id = args.get("rule_id")
+
+    # If rule_id not provided, try to get it from the current incident
+    if not rule_id:
+        incident = demisto.incident()
+        rule_id = incident.get("CustomFields", {}).get("datadogsecuritysignalruleid")
+        if not rule_id:
+            raise DemistoException(
+                "rule_id is required. Provide it as an argument or run from an incident with a Datadog Security Rule ID."
+            )
+
+    try:
+        with ApiClient(configuration) as api_client:
+            api_instance = SecurityMonitoringApi(api_client)
+            rule_response = api_instance.get_security_monitoring_rule(rule_id=rule_id)
+            rule_data = rule_response.to_dict()
+
+            if not rule_data:
+                readable_output = f"No security rule found with ID: {rule_id}"
+                return CommandResults(
+                    readable_output=readable_output,
+                    outputs_prefix=SECURITY_RULE_CONTEXT_NAME,
+                    outputs_key_field="id",
+                    outputs={},
+                )
+
+            rule = parse_security_rule(rule_data)
+
+            # Create human-readable summary using the display dictionary
+            rule_display = rule.to_display_dict()
+
+            readable_output = lookup_to_markdown(
+                [rule_display], "Security Rule Details"
+            )
+
+            return CommandResults(
+                readable_output=readable_output,
+                outputs_prefix=SECURITY_RULE_CONTEXT_NAME,
+                outputs_key_field="id",
+                outputs=rule.to_dict(),
+            )
+
+    except Exception as e:
+        raise DemistoException(f"Failed to get security rule {rule_id}: {str(e)}")
 
 
 def get_security_signal_list_command(
@@ -1135,30 +1257,58 @@ def update_security_signal_command(
         )
 
 
-def logs_search_command(
+def logs_query_command(
     configuration: Configuration,
     args: dict[str, Any],
 ) -> CommandResults:
     """
-    Search for logs in Datadog Cloud SIEM with optional filtering.
+    Query logs in Datadog Cloud SIEM.
 
-    Supports filtering by service, host, source, status, and time range.
+    Supports filtering by query and time range.
     Returns paginated results with configurable sorting for security investigations.
+    If no query is provided and running from an incident, will use the rule's query as fallback.
 
     Args:
         configuration: Datadog API configuration
-        args: Command arguments containing optional filters and pagination parameters
+        args: Command arguments containing filters and pagination parameters
 
     Returns:
         CommandResults: XSOAR command results with list of logs
 
     Raises:
-        DemistoException: If API call fails or invalid arguments provided
+        DemistoException: If no query provided and not in incident context, or API call fails
     """
     try:
-        page_size = arg_to_number(args.get("page_size"), arg_name="page_size")
-        limit = arg_to_number(args.get("limit"), arg_name="limit")
-        limit = calculate_limit(limit, page_size)
+        # Check if query is provided
+        query = args.get("query")
+        has_query = query is not None
+
+        # If no query provided, try to get it from incident's rule
+        if not has_query:
+            incident = demisto.incident()
+            rule_id = incident.get("CustomFields", {}).get(
+                "datadogsecuritysignalruleid"
+            )
+
+            if not rule_id:
+                raise DemistoException(
+                    "query is required. Provide it as an argument or run from an incident with a Datadog Security Signal."
+                )
+
+            # Fetch the rule and extract the query
+            with ApiClient(configuration) as api_client:
+                api_instance = SecurityMonitoringApi(api_client)
+                rule_response = api_instance.get_security_monitoring_rule(
+                    rule_id=rule_id
+                )
+                rule_data = rule_response.to_dict()
+                rule = parse_security_rule(rule_data)
+
+            # Extract query from rule
+            query = rule.extract_query()
+            args["query"] = query
+
+        limit = arg_to_number(args.get("limit"), arg_name="limit") or DEFAULT_PAGE_SIZE
 
         sort = args.get("sort", "desc")
         if sort not in ["asc", "desc"]:
@@ -1170,7 +1320,7 @@ def logs_search_command(
             else LogsSort.TIMESTAMP_DESCENDING
         )
 
-        search_query = build_logs_search_query(args)
+        search_query = args.get("query", "*")
 
         # Parse date range
         from_date = args.get("from_date", DEFAULT_FROM_DATE)
@@ -1370,7 +1520,8 @@ def main() -> None:
             "datadog-security-signal-get": get_security_signal_command,
             "datadog-security-signal-list": get_security_signal_list_command,
             "datadog-security-signal-update": update_security_signal_command,
-            "datadog-logs-search": logs_search_command,
+            "datadog-security-rule-get": get_security_rule_command,
+            "datadog-logs-query": logs_query_command,
         }
         if command == "test-module":
             return_results(module_test(configuration))

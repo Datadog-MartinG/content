@@ -364,6 +364,33 @@ script:
           description: The raw rule object returned by the API.
           type: Unknown
     - arguments:
+        - description: The event ID of the security signal to add a comment to. If not provided, will attempt to get it from the current incident.
+          name: event_id
+        - description: The comment text to add to the security signal.
+          name: comment
+          required: true
+      name: datadog-signal-comment-add
+      description: Add a comment to a security signal in Datadog Cloud SIEM.
+      outputs:
+        - contextPath: Datadog.SecurityComment.id
+          description: The unique identifier of the comment.
+          type: String
+        - contextPath: Datadog.SecurityComment.created_at
+          description: The timestamp when the comment was created.
+          type: String
+        - contextPath: Datadog.SecurityComment.user_uuid
+          description: The UUID of the user who created the comment.
+          type: String
+        - contextPath: Datadog.SecurityComment.text
+          description: The comment text content.
+          type: String
+        - contextPath: Datadog.SecurityComment.user.name
+          description: The name of the user who created the comment.
+          type: String
+        - contextPath: Datadog.SecurityComment.user.handle
+          description: The handle of the user who created the comment.
+          type: String
+    - arguments:
         - description: The event ID of the security signal to list comments for. If not provided, will attempt to get it from the current incident.
           name: event_id
       name: datadog-signal-comment-list
@@ -380,9 +407,6 @@ script:
           type: String
         - contextPath: Datadog.SecurityComment.text
           description: The comment text content.
-          type: String
-        - contextPath: Datadog.SecurityComment.user.uuid
-          description: The UUID of the user who created the comment.
           type: String
         - contextPath: Datadog.SecurityComment.user.name
           description: The name of the user who created the comment.

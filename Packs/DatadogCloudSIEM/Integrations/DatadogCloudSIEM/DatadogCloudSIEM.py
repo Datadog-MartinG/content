@@ -128,7 +128,6 @@ class Comment:
 
         if self.user_name or self.user_handle:
             result["user"] = {  # type: ignore
-                "uuid": self.user_uuid,
                 "name": self.user_name,
                 "handle": self.user_handle,
             }
@@ -1369,16 +1368,67 @@ def add_security_signal_comment_command(
     event_id = args.get("event_id")
     comment = args.get("comment")
 
-    if not event_id:
-        raise DemistoException("event_id is required")
     if not comment:
         raise DemistoException("comment is required")
 
+    # If event_id not provided, try to get it from the current incident
+    if not event_id:
+        incident = demisto.incident()
+        event_id = incident.get("CustomFields", {}).get("datadogsecuritysignaleventid")
+        if not event_id:
+            raise DemistoException(
+                "event_id is required. Provide it as an argument or run from an incident with a Datadog Security Signal Event ID."
+            )
+
     try:
-        ##
+        # This is not exposed by the Datadog API client, but still accessible via API tokens
+        comments_response = requests.post(
+            f"https://app.{SITE}/api/ui/security/appsec/comment/signal/{event_id}",
+            headers={
+                "dd-api-key": configuration.api_key["apiKeyAuth"],
+                "dd-application-key": configuration.api_key["appKeyAuth"],
+                "Content-Type": "application/json",
+            },
+            data=json.dumps(
+                {
+                    "data": {"type": "note", "attributes": {"text": comment}},
+                }
+            ),
+        )
+
+        if not comments_response.ok:
+            raise DemistoException(
+                f"API request failed with status {comments_response.status_code}: {comments_response.text}"
+            )
+
+        data = comments_response.json().get("data", {})
+        comment_obj = parse_security_comment(data)
+
+        # Resolve user UUID to name and handle
+        with ApiClient(configuration) as api_client:
+            user_api_instance = UsersApi(api_client)
+            try:
+                user_response = user_api_instance.get_user(user_id=comment_obj.user_uuid)
+                user_data = user_response.to_dict().get("data", {})
+                attrs = user_data.get("attributes", {})
+                comment_obj.user_name = attrs.get("name")
+                comment_obj.user_handle = attrs.get("handle")
+            except Exception:
+                pass  # Keep UUID if resolution fails
+
+        # Prepare outputs
+        display_data = comment_obj.to_display_dict()
+        output = comment_obj.to_dict()
+
+        readable_output = lookup_to_markdown(
+            [display_data], "Comment Added Successfully"
+        )
 
         return CommandResults(
-            readable_output="Comment added successfully (not implemented)",
+            readable_output=readable_output,
+            outputs_prefix=SECURITY_COMMENT_CONTEXT_NAME,
+            outputs_key_field="id",
+            outputs=output,
         )
 
     except Exception as e:

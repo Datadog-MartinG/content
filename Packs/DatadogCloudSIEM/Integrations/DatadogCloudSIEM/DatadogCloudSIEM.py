@@ -848,7 +848,8 @@ def get_security_signal_command(
 
     Args:
         configuration: Datadog API configuration
-        args: Command arguments containing signal_id
+        args: Command arguments containing:
+            - signal_id (str, optional): The ID of the signal to retrieve - fallback to incident signal id if not provided
 
     Returns:
         CommandResults: XSOAR command results with signal data
@@ -858,10 +859,14 @@ def get_security_signal_command(
     """
     signal_id = args.get("signal_id")
 
+    # If signal_id not provided, try to get it from the current incident
     if not signal_id:
-        raise DemistoException(
-            "Signal ID is required. Please provide signal_id parameter."
-        )
+        incident = demisto.incident()
+        signal_id = incident.get("CustomFields", {}).get("datadogsecuritysignalid")
+        if not signal_id:
+            raise DemistoException(
+                "signal_id is required. Provide it as an argument or run from an incident with a Datadog Security Signal ID."
+            )
 
     try:
         with ApiClient(configuration) as api_client:
@@ -1001,7 +1006,7 @@ def update_security_signal_command(
     Args:
         configuration: Datadog API configuration
         args: Command arguments containing:
-            - signal_id (str, required): The ID of the signal to update
+            - signal_id (str, optional): The ID of the signal to update - fallback to incident signal id if not provided
             - assignee (str, optional): Name or email of user to assign (empty string to unassign)
             - state (str, optional): New state (open, under_review, archived)
             - reason (str, optional): Reason for state change
@@ -1019,8 +1024,14 @@ def update_security_signal_command(
     reason = args.get("reason")
     comment = args.get("comment")
 
+    # If signal_id not provided, try to get it from the current incident
     if not signal_id:
-        raise DemistoException("signal_id is required")
+        incident = demisto.incident()
+        signal_id = incident.get("CustomFields", {}).get("datadogsecuritysignalid")
+        if not signal_id:
+            raise DemistoException(
+                "signal_id is required. Provide it as an argument or run from an incident with a Datadog Security Signal ID."
+            )
 
     # At least one update parameter must be provided
     if assignee is None and state is None:

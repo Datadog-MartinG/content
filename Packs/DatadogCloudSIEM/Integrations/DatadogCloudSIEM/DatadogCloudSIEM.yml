@@ -80,9 +80,8 @@ name: DatadogCloudSIEM
 script:
   commands:
     - arguments:
-        - description: The unique identifier of the security signal to retrieve.
+        - description: The unique identifier of the security signal to retrieve. If not provided, will attempt to get it from the current incident.
           name: signal_id
-          required: true
       name: datadog-security-signal-get
       description: Get a specific security signal by ID from Datadog Cloud SIEM.
       outputs:
@@ -282,9 +281,8 @@ script:
           description: The vendor used to calculate the DBot score for files
           type: String
     - arguments:
-        - description: The unique identifier of the security signal to update.
+        - description: The unique identifier of the security signal to update. If not provided, will attempt to get it from the current incident.
           name: signal_id
-          required: true
         - description: Name or email of the user to assign to the security signal. Leave empty to unassign. At least one of assignee or state must be provided.
           name: assignee
         - description: The new state of the security signal. At least one of assignee or state must be provided.

@@ -47,11 +47,21 @@ def main():
         if assignee_name:
             custom_fields["owner"] = assignee_name
 
+        # Close incident if signal is archived
+        signal_state = signal.get("triage", {}).get("state")
+        if signal_state == "archived":
+            custom_fields["closeReason"] = signal.get("triage", {}).get("archive_reason", "Other")
+            custom_fields["closeNotes"] = signal.get("triage", {}).get("archive_comment", "")
+
         demisto.debug(f"Custom fields: {custom_fields}")
 
         # Update incident
         if custom_fields:
             demisto.executeCommand("setIncident", custom_fields)
+
+            # Close the incident if signal is archived
+            if signal_state == "archived":
+                demisto.executeCommand("closeInvestigation", {})
             return_results(
                 CommandResults(
                     readable_output="Successfully synced incident fields from Datadog."

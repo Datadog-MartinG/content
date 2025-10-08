@@ -13,9 +13,8 @@ from CommonServerPython import CommandResults, DemistoException
 from DatadogCloudSIEM import (
     get_security_signal_command,
     get_security_signal_list_command,
-    logs_search_command,
-    update_security_signal_assignee_command,
-    update_security_signal_state_command,
+    logs_query_command,
+    update_security_signal_command,
 )
 
 
@@ -43,6 +42,7 @@ def security_signal_response():
     return {
         "data": {
             "id": "AQAAAYvz-1234567890",
+            "event_id": "AQAAAYvz-1234567890",
             "type": "signal",
             "attributes": {
                 "timestamp": "2024-01-15T10:30:00.000Z",
@@ -84,6 +84,7 @@ def security_signals_list_response():
         "data": [
             {
                 "id": "AQAAAYvz-1234567890",
+                "event_id": "AQAAAYvz-1234567890",
                 "type": "signal",
                 "attributes": {
                     "timestamp": "2024-01-15T10:30:00.000Z",
@@ -108,6 +109,7 @@ def security_signals_list_response():
             },
             {
                 "id": "AQAAAYvz-0987654321",
+                "event_id": "AQAAAYvz-0987654321",
                 "type": "signal",
                 "attributes": {
                     "timestamp": "2024-01-15T09:15:00.000Z",
@@ -141,7 +143,7 @@ def security_signals_list_response():
 
 def test_get_security_signal_command_success(configuration, security_signal_response):
     """Test get_security_signal_command with valid signal ID."""
-    args = {"signal_id": "AQAAAYvz-1234567890", "fetch_ioc": "false"}
+    args = {"signal_id": "AQAAAYvz-1234567890"}
 
     mock_response = MagicMock()
     mock_response.to_dict.return_value = security_signal_response
@@ -154,15 +156,11 @@ def test_get_security_signal_command_success(configuration, security_signal_resp
         mock_api.return_value = mock_api_instance
         mock_api_instance.get_security_monitoring_signal.return_value = mock_response
 
-        results = get_security_signal_command(configuration, args)
+        result = get_security_signal_command(configuration, args)
 
-        assert isinstance(results, list)
-        assert len(results) == 1
-        assert isinstance(results[0], CommandResults)
-        assert results[0].outputs["id"] == "AQAAAYvz-1234567890"  # type: ignore
-        mock_api_instance.get_security_monitoring_signal.assert_called_once_with(
-            signal_id="AQAAAYvz-1234567890"
-        )
+        assert isinstance(result, CommandResults)
+        assert result.outputs["id"] == "AQAAAYvz-1234567890"  # type: ignore
+        mock_api_instance.get_security_monitoring_signal.assert_called_once_with(signal_id="AQAAAYvz-1234567890")
 
 
 def test_get_security_signal_command_with_ioc(configuration, security_signal_response):
@@ -174,7 +172,7 @@ def test_get_security_signal_command_with_ioc(configuration, security_signal_res
         }
     }
 
-    args = {"signal_id": "AQAAAYvz-1234567890", "fetch_ioc": "true"}
+    args = {"signal_id": "AQAAAYvz-1234567890"}
 
     mock_response = MagicMock()
     mock_response.to_dict.return_value = security_signal_response
@@ -187,12 +185,10 @@ def test_get_security_signal_command_with_ioc(configuration, security_signal_res
         mock_api.return_value = mock_api_instance
         mock_api_instance.get_security_monitoring_signal.return_value = mock_response
 
-        results = get_security_signal_command(configuration, args)
+        result = get_security_signal_command(configuration, args)
 
-        assert isinstance(results, list)
-        # Should have at least the signal result
-        assert len(results) >= 1
-        assert isinstance(results[0], CommandResults)
+        assert isinstance(result, CommandResults)
+        assert result.outputs["id"] == "AQAAAYvz-1234567890"  # type: ignore
 
 
 def test_get_security_signal_command_not_found(configuration):
@@ -210,26 +206,26 @@ def test_get_security_signal_command_not_found(configuration):
         mock_api.return_value = mock_api_instance
         mock_api_instance.get_security_monitoring_signal.return_value = mock_response
 
-        results = get_security_signal_command(configuration, args)
+        result = get_security_signal_command(configuration, args)
 
-        assert isinstance(results, list)
-        assert len(results) == 1
-        assert "No security signal found" in results[0].readable_output
+        assert isinstance(result, CommandResults)
+        assert "No security signal found" in result.readable_output
 
 
 def test_get_security_signal_command_missing_signal_id(configuration):
     """Test get_security_signal_command without signal_id."""
     args = {}
 
-    with pytest.raises(DemistoException, match="Signal ID is required"):
+    with (
+        patch("DatadogCloudSIEM.demisto.incident", return_value={"CustomFields": {}}),
+        pytest.raises(DemistoException, match="signal_id is required"),
+    ):
         get_security_signal_command(configuration, args)
 
 
-def test_get_security_signal_list_command_success(
-    configuration, security_signals_list_response
-):
+def test_get_security_signal_list_command_success(configuration, security_signals_list_response):
     """Test get_security_signal_list_command with default parameters."""
-    args = {"limit": "50", "fetch_ioc": "false"}
+    args = {"limit": "50"}
 
     mock_response = MagicMock()
     mock_response.to_dict.return_value = security_signals_list_response
@@ -250,24 +246,19 @@ def test_get_security_signal_list_command_success(
 
         mock_fetch.return_value = [mock_signal1, mock_signal2]
 
-        results = get_security_signal_list_command(configuration, args)
+        result = get_security_signal_list_command(configuration, args)
 
-        assert isinstance(results, list)
-        assert len(results) >= 1
-        assert isinstance(results[0], CommandResults)
-        assert isinstance(results[0].outputs, list)  # type: ignore
-        assert len(results[0].outputs) == 2  # type: ignore
+        assert isinstance(result, CommandResults)
+        assert isinstance(result.outputs, list)  # type: ignore
+        assert len(result.outputs) == 2  # type: ignore
 
 
-def test_get_security_signal_list_command_with_filters(
-    configuration, security_signals_list_response
-):
+def test_get_security_signal_list_command_with_filters(configuration, security_signals_list_response):
     """Test get_security_signal_list_command with severity and state filters."""
     args = {
         "state": "open",
         "severity": "high",
         "limit": "50",
-        "fetch_ioc": "false",
     }
 
     mock_response = MagicMock()
@@ -276,24 +267,26 @@ def test_get_security_signal_list_command_with_filters(
     with (
         patch("DatadogCloudSIEM.ApiClient"),
         patch("DatadogCloudSIEM.SecurityMonitoringApi") as mock_api,
+        patch("DatadogCloudSIEM.fetch_security_signals") as mock_fetch,
     ):
         mock_api_instance = MagicMock()
         mock_api.return_value = mock_api_instance
-        mock_api_instance.search_security_monitoring_signals.return_value = (
-            mock_response
-        )
+        mock_api_instance.search_security_monitoring_signals.return_value = mock_response
 
-        results = get_security_signal_list_command(configuration, args)
+        # Mock fetch to return signals
+        mock_signal = MagicMock()
+        mock_signal.to_dict.return_value = {"id": "signal1"}
+        mock_signal.to_display_dict.return_value = {"ID": "signal1"}
+        mock_fetch.return_value = [mock_signal]
 
-        assert isinstance(results, list)
-        assert len(results) >= 1
+        result = get_security_signal_list_command(configuration, args)
+
+        assert isinstance(result, CommandResults)
 
 
-def test_get_security_signal_list_command_with_ioc(
-    configuration, security_signals_list_response
-):
+def test_get_security_signal_list_command_with_ioc(configuration, security_signals_list_response):
     """Test get_security_signal_list_command with IOC extraction enabled."""
-    args = {"limit": "50", "fetch_ioc": "true"}
+    args = {"limit": "50"}
 
     mock_response = MagicMock()
     mock_response.to_dict.return_value = security_signals_list_response
@@ -301,23 +294,26 @@ def test_get_security_signal_list_command_with_ioc(
     with (
         patch("DatadogCloudSIEM.ApiClient"),
         patch("DatadogCloudSIEM.SecurityMonitoringApi") as mock_api,
+        patch("DatadogCloudSIEM.fetch_security_signals") as mock_fetch,
     ):
         mock_api_instance = MagicMock()
         mock_api.return_value = mock_api_instance
-        mock_api_instance.search_security_monitoring_signals.return_value = (
-            mock_response
-        )
+        mock_api_instance.search_security_monitoring_signals.return_value = mock_response
 
-        results = get_security_signal_list_command(configuration, args)
+        # Mock fetch to return signals
+        mock_signal = MagicMock()
+        mock_signal.to_dict.return_value = {"id": "signal1"}
+        mock_signal.to_display_dict.return_value = {"ID": "signal1"}
+        mock_fetch.return_value = [mock_signal]
 
-        assert isinstance(results, list)
-        # Should have at least the signal list result
-        assert len(results) >= 1
+        result = get_security_signal_list_command(configuration, args)
+
+        assert isinstance(result, CommandResults)
 
 
 def test_get_security_signal_list_command_no_results(configuration):
     """Test get_security_signal_list_command when no signals are found."""
-    args = {"limit": "50", "fetch_ioc": "false"}
+    args = {"limit": "50"}
 
     mock_response = MagicMock()
     mock_response.to_dict.return_value = {"data": [], "meta": {}}
@@ -328,55 +324,99 @@ def test_get_security_signal_list_command_no_results(configuration):
     ):
         mock_api_instance = MagicMock()
         mock_api.return_value = mock_api_instance
-        mock_api_instance.search_security_monitoring_signals.return_value = (
-            mock_response
-        )
+        mock_api_instance.search_security_monitoring_signals.return_value = mock_response
 
         results = get_security_signal_list_command(configuration, args)
 
-        assert isinstance(results, list)
-        assert len(results) == 1
-        assert "No security signals found" in results[0].readable_output
+        assert isinstance(results, CommandResults)
+        assert "No security signals found" in results.readable_output
 
 
 def test_update_security_signal_assignee_command_success(configuration):
     """Test update_security_signal_assignee_command with valid parameters."""
     args = {
         "signal_id": "AQAAAYvz-1234567890",
-        "assignee_uuid": "550e8400-e29b-41d4-a716-446655440000",
+        "assignee": "security_analyst",
     }
 
-    mock_response = MagicMock()
-    mock_response.to_dict.return_value = {
-        "id": "AQAAAYvz-1234567890",
-        "type": "signal",
-        "attributes": {
-            "state": "under_review",
-            "assignee": {
-                "id": 12345,
-                "uuid": "550e8400-e29b-41d4-a716-446655440000",
-                "name": "security_analyst",
+    # Mock the get_security_monitoring_signal response
+    mock_get_response = MagicMock()
+    mock_get_response.to_dict.return_value = {
+        "data": {
+            "id": "AQAAAYvz-1234567890",
+            "event_id": "AQAAAYvz-1234567890",
+            "type": "signal",
+            "attributes": {
+                "timestamp": "2024-01-15T10:30:00.000Z",
+                "message": "Test signal",
+                "tags": ["test:tag"],
+                "custom": {
+                    "workflow": {
+                        "rule": {"id": "rule-123", "name": "Test Rule"},
+                        "triage": {"state": "open"},
+                    }
+                },
             },
-            "archive_comment": "",
-            "archive_reason": "",
-        },
+        }
+    }
+
+    # Mock the update response
+    mock_update_response = MagicMock()
+    mock_update_response.to_dict.return_value = {
+        "data": {
+            "id": "AQAAAYvz-1234567890",
+            "event_id": "AQAAAYvz-1234567890",
+            "type": "signal",
+            "attributes": {
+                "timestamp": "2024-01-15T10:30:00.000Z",
+                "message": "Test signal",
+                "tags": ["test:tag"],
+                "custom": {
+                    "workflow": {
+                        "rule": {"id": "rule-123", "name": "Test Rule"},
+                        "triage": {
+                            "state": "under_review",
+                            "assignee": {
+                                "name": "security_analyst",
+                                "uuid": "550e8400-e29b-41d4-a716-446655440000",
+                            },
+                        },
+                    }
+                },
+            },
+        }
     }
 
     with (
         patch("DatadogCloudSIEM.ApiClient"),
         patch("DatadogCloudSIEM.SecurityMonitoringApi") as mock_api,
+        patch("DatadogCloudSIEM.UsersApi") as mock_users_api,
     ):
         mock_api_instance = MagicMock()
         mock_api.return_value = mock_api_instance
-        mock_api_instance.edit_security_monitoring_signal_assignee.return_value = (
-            mock_response
-        )
+        mock_api_instance.get_security_monitoring_signal.return_value = mock_get_response
+        mock_api_instance.edit_security_monitoring_signal_assignee.return_value = mock_update_response
 
-        result = update_security_signal_assignee_command(configuration, args)
+        # Mock user lookup
+        mock_users_instance = MagicMock()
+        mock_users_api.return_value = mock_users_instance
+        # list_users returns a dict-like object
+        mock_users_instance.list_users.return_value = {
+            "data": [
+                {
+                    "id": "user-123",
+                    "attributes": {
+                        "name": "security_analyst",
+                        "email": "analyst@example.com",
+                    },
+                }
+            ]
+        }
+
+        result = update_security_signal_command(configuration, args)
 
         assert isinstance(result, CommandResults)
         assert result.outputs["id"] == "AQAAAYvz-1234567890"  # type: ignore
-        assert result.outputs["triage"]["assignee"]["uuid"] == "550e8400-e29b-41d4-a716-446655440000"  # type: ignore
 
 
 def test_update_security_signal_state_command_success(configuration):
@@ -384,19 +424,43 @@ def test_update_security_signal_state_command_success(configuration):
     args = {
         "signal_id": "AQAAAYvz-1234567890",
         "state": "archived",
-        "reason": "false_positive",
-        "comment": "This was a false positive alert",
+        "archive_reason": "false_positive",
+        "archive_comment": "This was a false positive alert",
     }
 
-    mock_response = MagicMock()
-    mock_response.to_dict.return_value = {
-        "id": "AQAAAYvz-1234567890",
-        "type": "signal",
-        "attributes": {
-            "state": "archived",
-            "archive_reason": "false_positive",
-            "archive_comment": "This was a false positive alert",
-        },
+    # Mock the get_security_monitoring_signal response
+    mock_get_response = MagicMock()
+    mock_get_response.to_dict.return_value = {
+        "data": {
+            "id": "AQAAAYvz-1234567890",
+            "event_id": "AQAAAYvz-1234567890",
+            "type": "signal",
+            "attributes": {
+                "timestamp": "2024-01-15T10:30:00.000Z",
+                "message": "Test signal",
+                "tags": ["test:tag"],
+                "custom": {
+                    "workflow": {
+                        "rule": {"id": "rule-123", "name": "Test Rule"},
+                        "triage": {"state": "open"},
+                    }
+                },
+            },
+        }
+    }
+
+    # Mock the update response - state update returns attributes at top level
+    mock_update_response = MagicMock()
+    mock_update_response.to_dict.return_value = {
+        "data": {
+            "id": "AQAAAYvz-1234567890",
+            "type": "signal",
+            "attributes": {
+                "state": "archived",
+                "archive_reason": "false_positive",
+                "archive_comment": "This was a false positive alert",
+            },
+        }
     }
 
     with (
@@ -405,16 +469,15 @@ def test_update_security_signal_state_command_success(configuration):
     ):
         mock_api_instance = MagicMock()
         mock_api.return_value = mock_api_instance
-        mock_api_instance.edit_security_monitoring_signal_state.return_value = (
-            mock_response
-        )
+        mock_api_instance.get_security_monitoring_signal.return_value = mock_get_response
+        mock_api_instance.edit_security_monitoring_signal_state.return_value = mock_update_response
 
-        result = update_security_signal_state_command(configuration, args)
+        result = update_security_signal_command(configuration, args)
 
         assert isinstance(result, CommandResults)
         assert result.outputs["id"] == "AQAAAYvz-1234567890"  # type: ignore
         assert result.outputs["triage"]["state"] == "archived"  # type: ignore
-        assert result.outputs["triage"]["reason"] == "false_positive"  # type: ignore
+        assert result.outputs["triage"]["archive_reason"] == "false_positive"  # type: ignore
 
 
 @pytest.fixture
@@ -455,7 +518,7 @@ def logs_search_response():
 
 def test_logs_search_command_success(configuration, logs_search_response):
     """Test logs_search_command with default parameters."""
-    args = {"limit": "50"}
+    args = {"query": "*", "limit": "50"}
 
     mock_response = MagicMock()
     mock_response.to_dict.return_value = logs_search_response
@@ -468,7 +531,7 @@ def test_logs_search_command_success(configuration, logs_search_response):
         mock_api.return_value = mock_api_instance
         mock_api_instance.list_logs.return_value = mock_response
 
-        result = logs_search_command(configuration, args)
+        result = logs_query_command(configuration, args)
 
         assert isinstance(result, CommandResults)
         assert isinstance(result.outputs, list)  # type: ignore
@@ -479,6 +542,7 @@ def test_logs_search_command_success(configuration, logs_search_response):
 def test_logs_search_command_with_filters(configuration, logs_search_response):
     """Test logs_search_command with service and status filters."""
     args = {
+        "query": "*",
         "service": "auth-service",
         "status": "warn",
         "host": "web-server-01",
@@ -496,7 +560,7 @@ def test_logs_search_command_with_filters(configuration, logs_search_response):
         mock_api.return_value = mock_api_instance
         mock_api_instance.list_logs.return_value = mock_response
 
-        result = logs_search_command(configuration, args)
+        result = logs_query_command(configuration, args)
 
         assert isinstance(result, CommandResults)
         assert isinstance(result.outputs, list)  # type: ignore
@@ -506,7 +570,7 @@ def test_logs_search_command_with_filters(configuration, logs_search_response):
 
 def test_logs_search_command_no_results(configuration):
     """Test logs_search_command when no logs are found."""
-    args = {"limit": "50"}
+    args = {"query": "*", "limit": "50"}
 
     mock_response = MagicMock()
     mock_response.to_dict.return_value = {"data": [], "meta": {}}
@@ -519,7 +583,7 @@ def test_logs_search_command_no_results(configuration):
         mock_api.return_value = mock_api_instance
         mock_api_instance.list_logs.return_value = mock_response
 
-        result = logs_search_command(configuration, args)
+        result = logs_query_command(configuration, args)
 
         assert isinstance(result, CommandResults)
         assert "No logs found" in result.readable_output
@@ -543,7 +607,7 @@ def test_logs_search_command_with_custom_query(configuration, logs_search_respon
         mock_api.return_value = mock_api_instance
         mock_api_instance.list_logs.return_value = mock_response
 
-        result = logs_search_command(configuration, args)
+        result = logs_query_command(configuration, args)
 
         assert isinstance(result, CommandResults)
         assert isinstance(result.outputs, list)  # type: ignore
@@ -568,13 +632,24 @@ def test_fetch_incidents_first_fetch(configuration, mocker):
     # Mock fetch_security_signals helper
     mock_signal = MagicMock()
     mock_signal.id = "signal-123"
+    mock_signal.event_id = "signal-123"
     mock_signal.title = "Test Security Signal"
     mock_signal.severity = "high"
     mock_signal.timestamp = "2024-01-15T10:30:00+00:00"
+    mock_signal.message = "Test message content"
+    mock_signal.host = "test-host"
+    mock_signal.tags = ["test:tag"]
+    mock_signal.url = "https://app.datadoghq.com/security/signal?event=signal-123"
     mock_signal.to_dict.return_value = {
         "id": "signal-123",
+        "event_id": "signal-123",
         "title": "Test Security Signal",
         "severity": "high",
+        "timestamp": "2024-01-15T10:30:00+00:00",
+        "message": "Test message content",
+        "host": "test-host",
+        "tags": ["test:tag"],
+        "url": "https://app.datadoghq.com/security/signal?event=signal-123",
     }
 
     with patch("DatadogCloudSIEM.fetch_security_signals", return_value=[mock_signal]):
@@ -592,13 +667,14 @@ def test_fetch_incidents_first_fetch(configuration, mocker):
         assert len(incidents_arg) == 1
         assert incidents_arg[0]["name"] == "Test Security Signal"
         assert incidents_arg[0]["severity"] == 3  # High severity maps to 3
-        assert (
-            incidents_arg[0]["CustomFields"]["datadogsecuritysignalid"] == "signal-123"
-        )
-        assert (
-            incidents_arg[0]["CustomFields"]["datadogsecuritysignalurl"]
-            == "https://app.datadoghq.com/security/signals/signal-123"
-        )
+        assert incidents_arg[0]["dbotMirrorId"] == "signal-123"
+        assert incidents_arg[0]["details"] == "Test message content"
+        # Verify rawJSON contains the signal data
+        import json
+
+        raw_json = json.loads(incidents_arg[0]["rawJSON"])
+        assert raw_json["id"] == "signal-123"
+        assert raw_json["event_id"] == "signal-123"
 
 
 def test_fetch_incidents_incremental_fetch(configuration, mocker):
@@ -611,18 +687,32 @@ def test_fetch_incidents_incremental_fetch(configuration, mocker):
         "fetch_query": "",
     }
     # Mock demisto functions
+    mocker.patch.object(demisto, "getLastRun", return_value={})
     mock_set_last_run = mocker.patch.object(demisto, "setLastRun")
+    mocker.patch.object(demisto, "incidents")
+    mocker.patch.object(demisto, "debug")
 
     # Mock fetch_security_signals helper
     mock_signal = MagicMock()
     mock_signal.id = "signal-456"
+    mock_signal.event_id = "signal-456"
     mock_signal.title = "New Security Signal"
     mock_signal.severity = "critical"
     mock_signal.timestamp = "2024-01-15T10:30:00+00:00"
+    mock_signal.message = "New signal message"
+    mock_signal.host = "test-host"
+    mock_signal.tags = ["test:tag"]
+    mock_signal.url = "https://app.datadoghq.com/security/signal?event=signal-456"
     mock_signal.to_dict.return_value = {
         "id": "signal-456",
+        "event_id": "signal-456",
         "title": "New Security Signal",
         "severity": "critical",
+        "timestamp": "2024-01-15T10:30:00+00:00",
+        "message": "New signal message",
+        "host": "test-host",
+        "tags": ["test:tag"],
+        "url": "https://app.datadoghq.com/security/signal?event=signal-456",
     }
 
     with patch("DatadogCloudSIEM.fetch_security_signals", return_value=[mock_signal]):
@@ -647,7 +737,10 @@ def test_fetch_incidents_no_results(configuration, mocker):
     }
 
     # Mock demisto functions
+    mocker.patch.object(demisto, "getLastRun", return_value={})
+    mocker.patch.object(demisto, "setLastRun")
     mock_incidents = mocker.patch.object(demisto, "incidents")
+    mocker.patch.object(demisto, "debug")
 
     with patch("DatadogCloudSIEM.fetch_security_signals", return_value=[]):
         from DatadogCloudSIEM import fetch_incidents
@@ -660,11 +753,11 @@ def test_fetch_incidents_no_results(configuration, mocker):
 
 def test_build_security_signal_url():
     """Test build_security_signal_url constructs correct URLs."""
-    from DatadogCloudSIEM import build_security_signal_url
+    from DatadogCloudSIEM import SecuritySignal
 
     assert (
-        build_security_signal_url("signal-123")
-        == "https://app.datadoghq.com/security/signals/signal-123"
+        SecuritySignal(id="signal-123", event_id="signal-123").build_url()
+        == "https://app.datadoghq.com/security/signal?event=signal-123"
     )
 
 
@@ -676,43 +769,19 @@ def test_security_signals_search_query():
     args = {
         "state": "open",
         "severity": "high",
-        "rule_name": "Brute Force",
         "source": "aws",
         "query": "host:web-server",
     }
     query = security_signals_search_query(args)
-    assert "state:open" in query
-    assert "severity:high" in query
-    assert "rule.name:Brute Force" in query
+    assert "@workflow.triage.state:open" in query
+    assert "status:high" in query
     assert "source:aws" in query
     assert "host:web-server" in query
     assert " AND " in query
 
-    # Test with no filters
-    assert security_signals_search_query({}) == "*"
-
-
-def test_build_logs_search_query():
-    """Test build_logs_search_query builds correct query string."""
-    from DatadogCloudSIEM import build_logs_search_query
-
-    # Test with multiple filters
-    args = {
-        "service": "auth-service",
-        "host": "web-01",
-        "source": "nginx",
-        "status": "error",
-        "query": "failed login",
-    }
-    query = build_logs_search_query(args)
-    assert "service:auth-service" in query
-    assert "host:web-01" in query
-    assert "source:nginx" in query
-    assert "status:error" in query
-    assert "failed login" in query
-
-    # Test with no filters
-    assert build_logs_search_query({}) == "*"
+    # Test with no filters (should still have the default rule type filter)
+    query_empty = security_signals_search_query({})
+    assert '@workflow.rule.type:("Log Detection" OR "Signal Correlation")' in query_empty
 
 
 def test_calculate_limit():

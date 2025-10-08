@@ -38,241 +38,352 @@ This integration was integrated and tested with version 2.12.0 of datadog-api-cl
 You can execute these commands from the Cortex XSOAR CLI, as part of an automation, or in a playbook.
 After you successfully execute a command, a DBot message appears in the War Room with the command details.
 
-### datadog-security-signal-get
+### datadog-signal-get
 
 ---
 
-Retrieves a specific security signal by ID from Datadog Cloud SIEM, including automatic extraction of IOCs (IP addresses, URLs, and file hashes).
+Get a specific security signal by ID from Datadog Cloud SIEM.
 
 #### Base Command
 
-`datadog-security-signal-get`
+`datadog-signal-get`
 
 #### Input
 
-| **Argument Name** | **Description**                                           | **Required** |
-| ----------------- | --------------------------------------------------------- | ------------ |
-| signal_id         | The unique identifier of the security signal to retrieve. | Required     |
+| **Argument Name** | **Description**                                                                                                              | **Required** |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| signal_id         | The unique identifier of the security signal to retrieve. If not provided, will attempt to get it from the current incident. | Optional     |
 
 #### Context Output
 
-| **Path**                                    | **Type** | **Description**                                            |
-| ------------------------------------------- | -------- | ---------------------------------------------------------- |
-| Datadog.SecuritySignal.id                   | String   | The unique identifier of the security signal.              |
-| Datadog.SecuritySignal.timestamp            | String   | The timestamp when the security signal was generated.      |
-| Datadog.SecuritySignal.title                | String   | The title of the security signal.                          |
-| Datadog.SecuritySignal.message              | String   | The message describing the security signal.                |
-| Datadog.SecuritySignal.severity             | String   | The severity level \(info, low, medium, high, critical\).  |
-| Datadog.SecuritySignal.host                 | String   | Host associated with the security signal.                  |
-| Datadog.SecuritySignal.service              | Unknown  | List of services associated with the security signal.      |
-| Datadog.SecuritySignal.tags                 | Unknown  | List of tags associated with the security signal.          |
-| Datadog.SecuritySignal.triggering_log_id    | String   | ID of the log that triggered the security signal.          |
-| Datadog.SecuritySignal.rule.id              | String   | The unique identifier of the security rule.                |
-| Datadog.SecuritySignal.rule.name            | String   | The name of the security rule that triggered the signal.   |
-| Datadog.SecuritySignal.rule.type            | String   | The type of the security rule.                             |
-| Datadog.SecuritySignal.rule.tags            | Unknown  | List of tags associated with the security rule.            |
-| Datadog.SecuritySignal.triage.state         | String   | The current triage state \(open, under_review, archived\). |
-| Datadog.SecuritySignal.triage.comment       | String   | The archive comment of the security signal.                |
-| Datadog.SecuritySignal.triage.reason        | String   | The archive reason of the security signal.                 |
-| Datadog.SecuritySignal.triage.assignee.id   | Number   | The ID of the user assigned to the security signal.        |
-| Datadog.SecuritySignal.triage.assignee.uuid | String   | The UUID of the user assigned to the security signal.      |
-| Datadog.SecuritySignal.triage.assignee.name | String   | The name of the user assigned to the security signal.      |
-| Datadog.SecuritySignal.raw                  | Unknown  | The raw signal object returned by the API.                 |
+| **Path**                                      | **Type** | **Description**                                                                   |
+| --------------------------------------------- | -------- | --------------------------------------------------------------------------------- |
+| Datadog.SecuritySignal.id                     | String   | The unique identifier of the security signal.                                     |
+| Datadog.SecuritySignal.event_id               | String   | The event ID of the security signal.                                              |
+| Datadog.SecuritySignal.timestamp              | String   | The timestamp when the security signal was generated.                             |
+| Datadog.SecuritySignal.host                   | String   | Host associated with the security signal.                                         |
+| Datadog.SecuritySignal.service                | String   | Services associated with the security signal.                                     |
+| Datadog.SecuritySignal.severity               | String   | The severity level of the security signal \(info, low, medium, high, critical\).  |
+| Datadog.SecuritySignal.title                  | String   | The title of the security signal.                                                 |
+| Datadog.SecuritySignal.message                | String   | The message describing the security signal.                                       |
+| Datadog.SecuritySignal.tags                   | Unknown  | List of tags associated with the security signal.                                 |
+| Datadog.SecuritySignal.triggering_log_id      | String   | ID of the log that triggered the security signal.                                 |
+| Datadog.SecuritySignal.url                    | String   | URL to view the security signal in Datadog UI.                                    |
+| Datadog.SecuritySignal.rule.id                | String   | The unique identifier of the security rule.                                       |
+| Datadog.SecuritySignal.rule.url               | String   | URL to view the security rule in Datadog UI.                                      |
+| Datadog.SecuritySignal.triage.state           | String   | The current triage state of the security signal \(open, under_review, archived\). |
+| Datadog.SecuritySignal.triage.archive_comment | String   | The archive comment of the security signal.                                       |
+| Datadog.SecuritySignal.triage.archive_reason  | String   | The archive reason of the security signal.                                        |
+| Datadog.SecuritySignal.triage.assignee.name   | String   | The name of the user assigned to the security signal.                             |
+| Datadog.SecuritySignal.triage.assignee.handle | String   | The handle of the user assigned to the security signal.                           |
+| Datadog.SecuritySignal.raw                    | Unknown  | The raw signal object returned by the API.                                        |
 
 #### Command example
 
-`!datadog-security-signal-get signal_id="AQAAAYZIXXXXXXXX"`
+`!datadog-signal-get signal_id=AZm-wsEuAACEnzdcj-YEigAA`
 
-#### Context Example
-
-```json
-[TO BE COMPLETED WITH ACTUAL OUTPUT]
-```
-
-#### Human Readable Output
-
-> [TO BE COMPLETED WITH ACTUAL OUTPUT]
+`!datadog-signal-get`
 
 ---
 
-### datadog-security-signals-list
+### datadog-signal-list
 
 ---
 
-Retrieves a list of security signals from Datadog Cloud SIEM with optional filtering by state, severity, time range, and custom queries. Automatically extracts IOCs from all returned signals.
+Get a list of security signals from Datadog Cloud SIEM with optional filtering and pagination.
 
 #### Base Command
 
-`datadog-security-signals-list`
+`datadog-signal-list`
 
 #### Input
 
-| **Argument Name** | **Description**                                                                                                                                                 | **Required** |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| state             | Filter signals by triage state. Possible values are: open, under_review, archived.                                                                              | Optional     |
-| severity          | Filter signals by severity level. Possible values are: info, low, medium, high, critical.                                                                       | Optional     |
-| rule_name         | Filter signals by rule name (exact match).                                                                                                                      | Optional     |
-| source            | Filter signals by source.                                                                                                                                       | Optional     |
-| query             | Custom query string for advanced filtering using Datadog search syntax.                                                                                         | Optional     |
-| from_date         | Start date for the search. Supports relative formats (e.g., "7 days ago", "-7days") or absolute ISO format (e.g., "2023-01-01T00:00:00Z"). Default is "-7days". | Optional     |
-| to_date           | End date for the search. Supports relative formats (e.g., "now") or absolute ISO format. Default is "now".                                                      | Optional     |
-| sort              | Sort order for results. Possible values are: asc, desc. Default is desc.                                                                                        | Optional     |
-| page_size         | Number of results per page.                                                                                                                                     | Optional     |
-| limit             | Maximum number of results to return. If page_size is specified, limit is ignored. Default is 50.                                                                | Optional     |
+| **Argument Name** | **Description**                                                                                                                         | **Required** |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| state             | Filter signals by state. Possible values are: open, under_review, archived.                                                             | Optional     |
+| severity          | Filter signals by severity level. Possible values are: info, low, medium, high, critical.                                               | Optional     |
+| source            | Filter signals by source.                                                                                                               | Optional     |
+| query             | Custom query string for advanced filtering. Uses Datadog search syntax.                                                                 | Optional     |
+| from_date         | Start date for the search. Format can be relative \(e.g., "7 days ago"\) or absolute \(e.g., "2023-01-01T00:00:00Z"\). Default: -7days. | Optional     |
+| to_date           | End date for the search. Format can be relative \(e.g., "now"\) or absolute \(e.g., "2023-01-01T23:59:59Z"\). Default: now.             | Optional     |
+| sort              | Sort order for results. Possible values are: asc, desc. Default: desc.                                                                  | Optional     |
+| page_size         | Number of results per page.                                                                                                             | Optional     |
+| limit             | Maximum number of results to return. If page_size is specified, limit is ignored. Default: 50.                                          | Optional     |
 
 #### Context Output
 
-| **Path**                                    | **Type** | **Description**                                            |
-| ------------------------------------------- | -------- | ---------------------------------------------------------- |
-| Datadog.SecuritySignal.id                   | String   | The unique identifier of the security signal.              |
-| Datadog.SecuritySignal.timestamp            | String   | The timestamp when the security signal was generated.      |
-| Datadog.SecuritySignal.title                | String   | The title of the security signal.                          |
-| Datadog.SecuritySignal.message              | String   | The message describing the security signal.                |
-| Datadog.SecuritySignal.severity             | String   | The severity level \(info, low, medium, high, critical\).  |
-| Datadog.SecuritySignal.host                 | String   | Host associated with the security signal.                  |
-| Datadog.SecuritySignal.service              | Unknown  | List of services associated with the security signal.      |
-| Datadog.SecuritySignal.tags                 | Unknown  | List of tags associated with the security signal.          |
-| Datadog.SecuritySignal.triggering_log_id    | String   | ID of the log that triggered the security signal.          |
-| Datadog.SecuritySignal.rule.id              | String   | The unique identifier of the security rule.                |
-| Datadog.SecuritySignal.rule.name            | String   | The name of the security rule that triggered the signal.   |
-| Datadog.SecuritySignal.rule.type            | String   | The type of the security rule.                             |
-| Datadog.SecuritySignal.rule.tags            | Unknown  | List of tags associated with the security rule.            |
-| Datadog.SecuritySignal.triage.state         | String   | The current triage state \(open, under_review, archived\). |
-| Datadog.SecuritySignal.triage.comment       | String   | The archive comment of the security signal.                |
-| Datadog.SecuritySignal.triage.reason        | String   | The archive reason of the security signal.                 |
-| Datadog.SecuritySignal.triage.assignee.id   | Number   | The ID of the user assigned to the security signal.        |
-| Datadog.SecuritySignal.triage.assignee.uuid | String   | The UUID of the user assigned to the security signal.      |
-| Datadog.SecuritySignal.triage.assignee.name | String   | The name of the user assigned to the security signal.      |
-| Datadog.SecuritySignal.raw                  | Unknown  | The raw signal object returned by the API.                 |
+| **Path**                                      | **Type** | **Description**                                                                   |
+| --------------------------------------------- | -------- | --------------------------------------------------------------------------------- |
+| Datadog.SecuritySignal.id                     | String   | The unique identifier of the security signal.                                     |
+| Datadog.SecuritySignal.event_id               | String   | The event ID of the security signal.                                              |
+| Datadog.SecuritySignal.timestamp              | String   | The timestamp when the security signal was generated.                             |
+| Datadog.SecuritySignal.host                   | String   | Host associated with the security signal.                                         |
+| Datadog.SecuritySignal.service                | String   | Services associated with the security signal.                                     |
+| Datadog.SecuritySignal.severity               | String   | The severity level of the security signal \(info, low, medium, high, critical\).  |
+| Datadog.SecuritySignal.title                  | String   | The title of the security signal.                                                 |
+| Datadog.SecuritySignal.message                | String   | The message describing the security signal.                                       |
+| Datadog.SecuritySignal.tags                   | Unknown  | List of tags associated with the security signal.                                 |
+| Datadog.SecuritySignal.triggering_log_id      | String   | ID of the log that triggered the security signal.                                 |
+| Datadog.SecuritySignal.url                    | String   | URL to view the security signal in Datadog UI.                                    |
+| Datadog.SecuritySignal.rule.id                | String   | The unique identifier of the security rule.                                       |
+| Datadog.SecuritySignal.rule.url               | String   | URL to view the security rule in Datadog UI.                                      |
+| Datadog.SecuritySignal.triage.state           | String   | The current triage state of the security signal \(open, under_review, archived\). |
+| Datadog.SecuritySignal.triage.archive_comment | String   | The archive comment of the security signal.                                       |
+| Datadog.SecuritySignal.triage.archive_reason  | String   | The archive reason of the security signal.                                        |
+| Datadog.SecuritySignal.triage.assignee.name   | String   | The name of the user assigned to the security signal.                             |
+| Datadog.SecuritySignal.triage.assignee.handle | String   | The handle of the user assigned to the security signal.                           |
+| Datadog.SecuritySignal.raw                    | Unknown  | The raw signal object returned by the API.                                        |
 
 #### Command example
 
-`!datadog-security-signals-list state=open severity=high limit=10`
+`!datadog-signal-list state=open severity=high`
 
-#### Context Example
-
-```json
-[TO BE COMPLETED WITH ACTUAL OUTPUT]
-```
-
-#### Human Readable Output
-
-> [TO BE COMPLETED WITH ACTUAL OUTPUT]
+`!datadog-signal-list from_date="-3days" to_date="now" limit=10`
 
 ---
 
-### datadog-security-signal-assignee-update
+### datadog-signal-update
 
 ---
 
-Updates the assignee of a security signal in Datadog Cloud SIEM. Assign signals to team members for investigation and response.
+Update a security signal's assignee and/or state in Datadog Cloud SIEM. Can update assignee only, state only, or both in a single command.
 
 #### Base Command
 
-`datadog-security-signal-assignee-update`
+`datadog-signal-update`
 
 #### Input
 
-| **Argument Name** | **Description**                                                                 | **Required** |
-| ----------------- | ------------------------------------------------------------------------------- | ------------ |
-| signal_id         | The unique identifier of the security signal to update.                         | Required     |
-| assignee_uuid     | The UUID of the user to assign to the security signal. Leave empty to unassign. | Optional     |
+| **Argument Name** | **Description**                                                                                                                                                                                                                      | **Required** |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ |
+| signal_id         | The unique identifier of the security signal to update. If not provided, will attempt to get it from the current incident.                                                                                                           | Optional     |
+| assignee          | Name or email of the user to assign to the security signal. Leave empty to unassign. At least one of assignee or state must be provided.                                                                                             | Optional     |
+| state             | The new state of the security signal. Possible values are: open, under_review, archived. At least one of assignee or state must be provided.                                                                                         | Optional     |
+| archive_reason    | Reason for the state change \(used when changing state to archived\). Possible values are: none, false_positive, testing_or_maintenance, remediated, investigated_case_opened, other, true_positive_benign, true_positive_malicious. | Optional     |
+| archive_comment   | Comment about the state change \(used when changing state to archived\).                                                                                                                                                             | Optional     |
 
 #### Context Output
 
-| **Path**                                    | **Type** | **Description**                                            |
-| ------------------------------------------- | -------- | ---------------------------------------------------------- |
-| Datadog.SecuritySignal.triage.state         | String   | The current triage state \(open, under_review, archived\). |
-| Datadog.SecuritySignal.triage.comment       | String   | The archive comment of the security signal.                |
-| Datadog.SecuritySignal.triage.reason        | String   | The archive reason of the security signal.                 |
-| Datadog.SecuritySignal.triage.assignee.uuid | String   | The UUID of the user assigned to the security signal.      |
-| Datadog.SecuritySignal.triage.assignee.name | String   | The name of the user assigned to the security signal.      |
+| **Path**                                      | **Type** | **Description**                                                                   |
+| --------------------------------------------- | -------- | --------------------------------------------------------------------------------- |
+| Datadog.SecuritySignal.id                     | String   | The unique identifier of the security signal.                                     |
+| Datadog.SecuritySignal.event_id               | String   | The event ID of the security signal.                                              |
+| Datadog.SecuritySignal.timestamp              | String   | The timestamp when the security signal was generated.                             |
+| Datadog.SecuritySignal.host                   | String   | Host associated with the security signal.                                         |
+| Datadog.SecuritySignal.service                | String   | Services associated with the security signal.                                     |
+| Datadog.SecuritySignal.severity               | String   | The severity level of the security signal \(info, low, medium, high, critical\).  |
+| Datadog.SecuritySignal.title                  | String   | The title of the security signal.                                                 |
+| Datadog.SecuritySignal.message                | String   | The message describing the security signal.                                       |
+| Datadog.SecuritySignal.tags                   | Unknown  | List of tags associated with the security signal.                                 |
+| Datadog.SecuritySignal.triggering_log_id      | String   | ID of the log that triggered the security signal.                                 |
+| Datadog.SecuritySignal.url                    | String   | URL to view the security signal in Datadog UI.                                    |
+| Datadog.SecuritySignal.rule.id                | String   | The unique identifier of the security rule.                                       |
+| Datadog.SecuritySignal.rule.url               | String   | URL to view the security rule in Datadog UI.                                      |
+| Datadog.SecuritySignal.triage.state           | String   | The current triage state of the security signal \(open, under_review, archived\). |
+| Datadog.SecuritySignal.triage.archive_comment | String   | The archive comment of the security signal.                                       |
+| Datadog.SecuritySignal.triage.archive_reason  | String   | The archive reason of the security signal.                                        |
+| Datadog.SecuritySignal.triage.assignee.name   | String   | The name of the user assigned to the security signal.                             |
+| Datadog.SecuritySignal.triage.assignee.handle | String   | The handle of the user assigned to the security signal.                           |
+| Datadog.SecuritySignal.raw                    | Unknown  | The raw signal object returned by the API.                                        |
 
 #### Command example
 
-`!datadog-security-signal-assignee-update signal_id="AQAAAYZIXXXXXXXX" assignee_uuid="00000000-0000-0000-0000-000000000000"`
+`!datadog-signal-update signal_id=AZm-wsEuAACEnzdcj-YEigAA state=archived archive_reason=false_positive archive_comment="Not a real threat"`
 
-#### Context Example
+`!datadog-signal-update assignee=user@example.com`
 
-```json
-[TO BE COMPLETED WITH ACTUAL OUTPUT]
-```
-
-#### Human Readable Output
-
-> [TO BE COMPLETED WITH ACTUAL OUTPUT]
+`!datadog-signal-update state=under_review`
 
 ---
 
-### datadog-security-signal-state-update
+### datadog-signal-comment-add
 
 ---
 
-Updates the triage state of a security signal in Datadog Cloud SIEM. Manage signal lifecycle by transitioning between open, under review, and archived states.
+Add a comment to a security signal in Datadog Cloud SIEM.
 
 #### Base Command
 
-`datadog-security-signal-state-update`
+`datadog-signal-comment-add`
 
 #### Input
 
-| **Argument Name** | **Description**                                                                         | **Required** |
-| ----------------- | --------------------------------------------------------------------------------------- | ------------ |
-| signal_id         | The unique identifier of the security signal to update.                                 | Required     |
-| state             | The new triage state for the signal. Possible values are: open, under_review, archived. | Required     |
-| reason            | Reason for the state change (especially important when archiving signals).              | Optional     |
-| comment           | Additional comment about the state change.                                              | Optional     |
+| **Argument Name** | **Description**                                                                                                             | **Required** |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| event_id          | The event ID of the security signal to add a comment to. If not provided, will attempt to get it from the current incident. | Optional     |
+| comment           | The comment text to add to the security signal.                                                                             | Required     |
 
 #### Context Output
 
-| **Path**                                    | **Type** | **Description**                                            |
-| ------------------------------------------- | -------- | ---------------------------------------------------------- |
-| Datadog.SecuritySignal.triage.state         | String   | The current triage state \(open, under_review, archived\). |
-| Datadog.SecuritySignal.triage.comment       | String   | The archive comment of the security signal.                |
-| Datadog.SecuritySignal.triage.reason        | String   | The archive reason of the security signal.                 |
-| Datadog.SecuritySignal.triage.assignee.uuid | String   | The UUID of the user assigned to the security signal.      |
-| Datadog.SecuritySignal.triage.assignee.name | String   | The name of the user assigned to the security signal.      |
+| **Path**                            | **Type** | **Description**                                 |
+| ----------------------------------- | -------- | ----------------------------------------------- |
+| Datadog.SecurityComment.id          | String   | The unique identifier of the comment.           |
+| Datadog.SecurityComment.created_at  | String   | The timestamp when the comment was created.     |
+| Datadog.SecurityComment.user_uuid   | String   | The UUID of the user who created the comment.   |
+| Datadog.SecurityComment.text        | String   | The comment text content.                       |
+| Datadog.SecurityComment.user.name   | String   | The name of the user who created the comment.   |
+| Datadog.SecurityComment.user.handle | String   | The handle of the user who created the comment. |
 
 #### Command example
 
-`!datadog-security-signal-state-update signal_id="AQAAAYZIXXXXXXXX" state="archived" reason="false_positive" comment="Benign activity confirmed"`
+`!datadog-signal-comment-add event_id=AZm-wsEuAACEnzdcj-YEigAA comment="Investigating this signal"`
 
-#### Context Example
-
-```json
-[TO BE COMPLETED WITH ACTUAL OUTPUT]
-```
-
-#### Human Readable Output
-
-> [TO BE COMPLETED WITH ACTUAL OUTPUT]
+`!datadog-signal-comment-add comment="False positive confirmed"`
 
 ---
 
-### datadog-logs-search
+### datadog-signal-comment-list
 
 ---
 
-Searches for logs in Datadog with optional filtering by service, host, source, status, and time range. Useful for security investigations and threat hunting.
+List all comments for a security signal in Datadog Cloud SIEM.
 
 #### Base Command
 
-`datadog-logs-search`
+`datadog-signal-comment-list`
 
 #### Input
 
-| **Argument Name** | **Description**                                                                                                        | **Required** |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------ |
-| query             | Custom search query string using Datadog search syntax.                                                                | Optional     |
-| service           | Filter logs by service name.                                                                                           | Optional     |
-| host              | Filter logs by host name.                                                                                              | Optional     |
-| source            | Filter logs by source.                                                                                                 | Optional     |
-| status            | Filter logs by status/level (info, warn, error, debug, etc.).                                                          | Optional     |
-| from_date         | Start date for the search. Supports relative formats (e.g., "7 days ago") or absolute ISO format. Default is "-7days". | Optional     |
-| to_date           | End date for the search. Supports relative formats (e.g., "now") or absolute ISO format. Default is "now".             | Optional     |
-| sort              | Sort order for results. Possible values are: asc, desc. Default is desc.                                               | Optional     |
-| page_size         | Number of results per page.                                                                                            | Optional     |
-| limit             | Maximum number of results to return. If page_size is specified, limit is ignored. Default is 50.                       | Optional     |
+| **Argument Name** | **Description**                                                                                                              | **Required** |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| event_id          | The event ID of the security signal to list comments for. If not provided, will attempt to get it from the current incident. | Optional     |
+
+#### Context Output
+
+| **Path**                            | **Type** | **Description**                                 |
+| ----------------------------------- | -------- | ----------------------------------------------- |
+| Datadog.SecurityComment.id          | String   | The unique identifier of the comment.           |
+| Datadog.SecurityComment.created_at  | String   | The timestamp when the comment was created.     |
+| Datadog.SecurityComment.user_uuid   | String   | The UUID of the user who created the comment.   |
+| Datadog.SecurityComment.text        | String   | The comment text content.                       |
+| Datadog.SecurityComment.user.name   | String   | The name of the user who created the comment.   |
+| Datadog.SecurityComment.user.handle | String   | The handle of the user who created the comment. |
+
+#### Command example
+
+`!datadog-signal-comment-list event_id=AZm-wsEuAACEnzdcj-YEigAA`
+
+`!datadog-signal-comment-list`
+
+---
+
+### datadog-rule-suppress
+
+---
+
+Create a suppression rule for a security monitoring rule to exclude signals from generating alerts. Useful for filtering out known false positives or signals from testing environments.
+
+#### Base Command
+
+`datadog-rule-suppress`
+
+#### Input
+
+| **Argument Name**    | **Description**                                                                                                         | **Required** |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------ |
+| rule_id              | The ID of the security rule to suppress. If not provided, will attempt to get it from the current incident.             | Optional     |
+| data_exclusion_query | Query to match signals to suppress. Uses Datadog search syntax. Default is "\*" to suppress all signals from this rule. | Optional     |
+
+#### Context Output
+
+There is no context output for this command.
+
+#### Command example
+
+`!datadog-rule-suppress rule_id=abc-123-def data_exclusion_query="env:staging"`
+
+`!datadog-rule-suppress data_exclusion_query="host:test-*"`
+
+---
+
+### datadog-rule-unsuppress
+
+---
+
+Disable all active suppressions affecting a security monitoring rule, re-enabling alerts for that rule.
+
+#### Base Command
+
+`datadog-rule-unsuppress`
+
+#### Input
+
+| **Argument Name** | **Description**                                                                                               | **Required** |
+| ----------------- | ------------------------------------------------------------------------------------------------------------- | ------------ |
+| rule_id           | The ID of the security rule to unsuppress. If not provided, will attempt to get it from the current incident. | Optional     |
+
+#### Context Output
+
+There is no context output for this command.
+
+#### Command example
+
+`!datadog-rule-unsuppress rule_id=abc-123-def`
+
+`!datadog-rule-unsuppress`
+
+---
+
+### datadog-rule-get
+
+---
+
+Get a specific security monitoring rule by ID from Datadog Cloud SIEM.
+
+#### Base Command
+
+`datadog-rule-get`
+
+#### Input
+
+| **Argument Name** | **Description**                                                                                                            | **Required** |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| rule_id           | The unique identifier of the security rule to retrieve. If not provided, will attempt to get it from the current incident. | Optional     |
+
+#### Context Output
+
+| **Path**                       | **Type** | **Description**                                    |
+| ------------------------------ | -------- | -------------------------------------------------- |
+| Datadog.SecurityRule.id        | String   | The unique identifier of the security rule.        |
+| Datadog.SecurityRule.name      | String   | The name of the security rule.                     |
+| Datadog.SecurityRule.type      | String   | The type of the security rule.                     |
+| Datadog.SecurityRule.isEnabled | Boolean  | Whether the security rule is enabled.              |
+| Datadog.SecurityRule.createdAt | String   | Timestamp when the rule was created.               |
+| Datadog.SecurityRule.message   | String   | Message for the security rule.                     |
+| Datadog.SecurityRule.queries   | Unknown  | Queries associated with the security rule.         |
+| Datadog.SecurityRule.cases     | Unknown  | Cases \(severity and notifications\) for the rule. |
+| Datadog.SecurityRule.options   | Unknown  | Options for the security rule.                     |
+| Datadog.SecurityRule.tags      | Unknown  | Tags associated with the security rule.            |
+| Datadog.SecurityRule.url       | String   | URL to view the security rule in Datadog UI.       |
+| Datadog.SecurityRule.raw       | Unknown  | The raw rule object returned by the API.           |
+
+#### Command example
+
+`!datadog-rule-get rule_id=abc-123-def`
+
+`!datadog-rule-get`
+
+---
+
+### datadog-logs-query
+
+---
+
+Query logs in Datadog Cloud SIEM with optional filtering for security investigations.
+
+#### Base Command
+
+`datadog-logs-query`
+
+#### Input
+
+| **Argument Name** | **Description**                                                                                                                                                        | **Required** |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| query             | Custom search query string. Uses Datadog search syntax. Required unless running from an incident with a Datadog Security Signal \(will use rule's query as fallback\). | Optional     |
+| from_date         | Start date for the search. Format can be relative \(e.g., "7 days ago"\) or absolute \(e.g., "2023-01-01T00:00:00Z"\). Default: -7days.                                | Optional     |
+| to_date           | End date for the search. Format can be relative \(e.g., "now"\) or absolute \(e.g., "2023-01-01T23:59:59Z"\). Default: now.                                            | Optional     |
+| sort              | Sort order for results. Possible values are: asc, desc. Default: desc.                                                                                                 | Optional     |
+| limit             | Maximum number of results to return. Default: 50.                                                                                                                      | Optional     |
 
 #### Context Output
 
@@ -286,21 +397,14 @@ Searches for logs in Datadog with optional filtering by service, host, source, s
 | Datadog.Log.source    | String   | The source of the log entry.                |
 | Datadog.Log.status    | String   | The status/level of the log entry.          |
 | Datadog.Log.tags      | Unknown  | List of tags associated with the log entry. |
+| Datadog.Log.url       | String   | URL to view the log in Datadog UI.          |
 | Datadog.Log.raw       | Unknown  | The raw log object returned by the API.     |
 
 #### Command example
 
-`!datadog-logs-search service="web-api" status="error" limit=20`
+`!datadog-logs-query query="source:nginx status:error" from_date="-1hour" limit=50`
 
-#### Context Example
-
-```json
-[TO BE COMPLETED WITH ACTUAL OUTPUT]
-```
-
-#### Human Readable Output
-
-> [TO BE COMPLETED WITH ACTUAL OUTPUT]
+`!datadog-logs-query`
 
 ---
 
@@ -330,18 +434,6 @@ Each fetched incident includes:
 - **Severity**: Mapped from Datadog severity (Low=1, Medium=2, High=3, Critical=4)
 - **Raw JSON**: Complete signal data for mapping and enrichment
 
-### IOC Extraction
-
-IOCs are automatically extracted from security signals and can be accessed via:
-
-- Running `!datadog-security-signal-get signal_id=${incident.dbotMirrorId}` in playbooks
-- Standard XSOAR indicator contexts (IP, URL, File) are populated
-
-## Known Limitations
-
-- Private IP addresses (RFC 1918) are filtered out from IOC extraction
-- Datadog API rate limits apply
-
 ## Troubleshooting
 
 ### Authentication Errors
@@ -355,9 +447,3 @@ IOCs are automatically extracted from security signals and can be accessed via:
 - Check First Fetch Time is not too far in the past (max 90 days recommended)
 - Verify Fetch Query syntax using Datadog's query language
 - Review integration logs for detailed error messages
-
-### IOC Extraction
-
-- IOCs are extracted from signal title, message, tags, and raw data
-- Only public IP addresses are extracted (private IPs filtered)
-- File hashes must be complete MD5 (32 chars), SHA1 (40 chars), or SHA256 (64 chars)

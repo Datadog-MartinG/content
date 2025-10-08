@@ -20,12 +20,12 @@ configuration:
   - additionalinfo: The API Key to use for authentication
     display: API Key
     name: api_key
-    type: 4
+    type: 9
     required: true
   - additionalinfo: The APP Key to use for authentication
     display: APP Key
     name: app_key
-    type: 4
+    type: 9
     required: true
   - display: Fetch incidents
     name: isFetch
@@ -163,24 +163,20 @@ script:
           name: source
         - description: Custom query string for advanced filtering. Uses Datadog search syntax.
           name: query
-        - description: Start date for the search. Format can be relative (e.g., "7 days ago") or absolute (e.g., "2023-01-01T00:00:00Z").
+        - description: Start date for the search. Format can be relative (e.g., "7 days ago") or absolute (e.g., "2023-01-01T00:00:00Z"). Default is -7days.
           name: from_date
-          defaultvalue: "-7days"
-        - description: End date for the search. Format can be relative (e.g., "now") or absolute (e.g., "2023-01-01T23:59:59Z").
+        - description: End date for the search. Format can be relative (e.g., "now") or absolute (e.g., "2023-01-01T23:59:59Z"). Default is now.
           name: to_date
-          defaultvalue: "now"
-        - description: Sort order for results.
+        - description: Sort order for results. Default is desc.
           name: sort
           auto: PREDEFINED
           predefined:
             - asc
             - desc
-          defaultvalue: "desc"
         - description: Number of results per page.
           name: page_size
-        - description: Maximum number of results to return. If page_size is specified, limit is ignored.
+        - description: Maximum number of results to return. If page_size is specified, limit is ignored. Default is 50.
           name: limit
-          defaultvalue: "50"
       name: datadog-signal-list
       description: Get a list of security signals from Datadog Cloud SIEM with optional filtering and pagination.
       outputs:
@@ -374,7 +370,6 @@ script:
           name: rule_id
         - description: Query to match signals to suppress. Uses Datadog search syntax. Default is "*" to suppress all signals from this rule.
           name: data_exclusion_query
-          defaultvalue: "*"
       name: datadog-rule-suppress
       description: Create a suppression rule for a security monitoring rule to exclude signals from generating alerts. Useful for filtering out known false positives or signals from testing environments.
     - arguments:
@@ -436,22 +431,18 @@ script:
     - arguments:
         - description: Custom search query string. Uses Datadog search syntax. Required unless running from an incident with a Datadog Security Signal (will use rule's query as fallback).
           name: query
-        - description: Start date for the search. Format can be relative (e.g., "7 days ago") or absolute (e.g., "2023-01-01T00:00:00Z").
+        - description: Start date for the search. Format can be relative (e.g., "7 days ago") or absolute (e.g., "2023-01-01T00:00:00Z"). Default is -7days.
           name: from_date
-          defaultvalue: "-7days"
-        - description: End date for the search. Format can be relative (e.g., "now") or absolute (e.g., "2023-01-01T23:59:59Z").
+        - description: End date for the search. Format can be relative (e.g., "now") or absolute (e.g., "2023-01-01T23:59:59Z"). Default is now.
           name: to_date
-          defaultvalue: "now"
-        - description: Sort order for results.
+        - description: Sort order for results. Default is desc.
           name: sort
           auto: PREDEFINED
           predefined:
             - asc
             - desc
-          defaultvalue: "desc"
-        - description: Maximum number of results to return.
+        - description: Maximum number of results to return. Default is 50.
           name: limit
-          defaultvalue: "50"
       name: datadog-logs-query
       description: Query logs in Datadog Cloud SIEM with optional filtering for security investigations.
       outputs:

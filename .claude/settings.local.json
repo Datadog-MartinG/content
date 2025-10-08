@@ -9,7 +9,11 @@
       "WebSearch",
       "WebFetch(domain:live.paloaltonetworks.com)",
       "WebFetch(domain:xsoar.pan.dev)",
-      "WebFetch(domain:docs.datadoghq.com)"
+      "WebFetch(domain:docs.datadoghq.com)",
+      "WebFetch(domain:datadoghq.dev)",
+      "Bash(do echo \"=== $file ===\")",
+      "Bash(jq:*)",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []

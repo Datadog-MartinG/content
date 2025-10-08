@@ -88,6 +88,9 @@ script:
         - contextPath: Datadog.SecuritySignal.id
           description: The unique identifier of the security signal.
           type: String
+        - contextPath: Datadog.SecuritySignal.event_id
+          description: The event ID of the security signal.
+          type: String
         - contextPath: Datadog.SecuritySignal.timestamp
           description: The timestamp when the security signal was generated.
           type: String
@@ -184,6 +187,9 @@ script:
         - contextPath: Datadog.SecuritySignal.id
           description: The unique identifier of the security signal.
           type: String
+        - contextPath: Datadog.SecuritySignal.event_id
+          description: The event ID of the security signal.
+          type: String
         - contextPath: Datadog.SecuritySignal.timestamp
           description: The timestamp when the security signal was generated.
           type: String
@@ -267,6 +273,9 @@ script:
         - contextPath: Datadog.SecuritySignal.id
           description: The unique identifier of the security signal.
           type: String
+        - contextPath: Datadog.SecuritySignal.event_id
+          description: The event ID of the security signal.
+          type: String
         - contextPath: Datadog.SecuritySignal.timestamp
           description: The timestamp when the security signal was generated.
           type: String
@@ -293,9 +302,6 @@ script:
           type: String
         - contextPath: Datadog.SecuritySignal.rule.id
           description: The unique identifier of the security rule.
-          type: String
-        - contextPath: Datadog.SecuritySignal.rule.type
-          description: The type of the security rule.
           type: String
         - contextPath: Datadog.SecuritySignal.rule.url
           description: URL to view the security rule in Datadog UI.
@@ -324,7 +330,7 @@ script:
     - arguments:
         - description: The unique identifier of the security rule to retrieve. If not provided, will attempt to get it from the current incident.
           name: rule_id
-      name: datadog-security-rule-get
+      name: datadog-rule-get
       description: Get a specific security monitoring rule by ID from Datadog Cloud SIEM.
       outputs:
         - contextPath: Datadog.SecurityRule.id
@@ -363,6 +369,19 @@ script:
         - contextPath: Datadog.SecurityRule.raw
           description: The raw rule object returned by the API.
           type: Unknown
+    - arguments:
+        - description: The ID of the security rule to suppress. If not provided, will attempt to get it from the current incident.
+          name: rule_id
+        - description: Query to match signals to suppress. Uses Datadog search syntax. Default is "*" to suppress all signals from this rule.
+          name: data_exclusion_query
+          defaultvalue: "*"
+      name: datadog-rule-suppress
+      description: Create a suppression rule for a security monitoring rule to exclude signals from generating alerts. Useful for filtering out known false positives or signals from testing environments.
+    - arguments:
+        - description: The ID of the security rule to unsuppress. If not provided, will attempt to get it from the current incident.
+          name: rule_id
+      name: datadog-rule-unsuppress
+      description: Disable all active suppressions affecting a security monitoring rule, re-enabling alerts for that rule.
     - arguments:
         - description: The event ID of the security signal to add a comment to. If not provided, will attempt to get it from the current incident.
           name: event_id
@@ -466,7 +485,7 @@ script:
         - contextPath: Datadog.Log.raw
           description: The raw log object returned by the API.
           type: Unknown
-  dockerimage: demisto/datadog-api-client:1.0.0.1832460
+  dockerimage: demisto/datadog-api-client:1.0.0.4893383
   isfetch: true
   runonce: false
   script: "-"

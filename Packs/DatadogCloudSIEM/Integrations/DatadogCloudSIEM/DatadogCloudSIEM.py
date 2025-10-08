@@ -44,6 +44,27 @@ from datadog_api_client.v2.model.security_monitoring_signal_state_update_request
 from datadog_api_client.v2.model.security_monitoring_signals_sort import (
     SecurityMonitoringSignalsSort,
 )
+from datadog_api_client.v2.model.security_monitoring_suppression_create_attributes import (
+    SecurityMonitoringSuppressionCreateAttributes,
+)
+from datadog_api_client.v2.model.security_monitoring_suppression_create_data import (
+    SecurityMonitoringSuppressionCreateData,
+)
+from datadog_api_client.v2.model.security_monitoring_suppression_create_request import (
+    SecurityMonitoringSuppressionCreateRequest,
+)
+from datadog_api_client.v2.model.security_monitoring_suppression_type import (
+    SecurityMonitoringSuppressionType,
+)
+from datadog_api_client.v2.model.security_monitoring_suppression_update_attributes import (
+    SecurityMonitoringSuppressionUpdateAttributes,
+)
+from datadog_api_client.v2.model.security_monitoring_suppression_update_data import (
+    SecurityMonitoringSuppressionUpdateData,
+)
+from datadog_api_client.v2.model.security_monitoring_suppression_update_request import (
+    SecurityMonitoringSuppressionUpdateRequest,
+)
 from datadog_api_client.v2.model.security_monitoring_triage_user import (
     SecurityMonitoringTriageUser,
 )
@@ -151,6 +172,15 @@ class SecurityRule:
     # Raw rule data
     raw: dict[str, Any] | None = None
 
+    def build_url(self) -> str:
+        """
+        Construct the Datadog Cloud SIEM URL for this security rule.
+
+        Returns:
+            str: Full URL to view the rule in Datadog UI
+        """
+        return f"https://app.{SITE}/security/rules/view/{self.id}"
+
     def extract_query(self) -> str:
         """
         Extract and combine log queries from this rule's queries using OR operator.
@@ -201,7 +231,7 @@ class SecurityRule:
                 if self.tags
                 else None
             ),
-            "URL": build_security_rule_url(self.id),
+            "URL": self.build_url(),
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -222,7 +252,7 @@ class SecurityRule:
             "cases": self.cases,
             "options": self.options,
             "tags": self.tags,
-            "url": build_security_rule_url(self.id),
+            "url": self.build_url(),
             "raw": self.raw,
         }
 
@@ -242,6 +272,15 @@ class Log:
 
     # Raw log data
     raw: dict[str, Any] | None = None
+
+    def build_url(self) -> str:
+        """
+        Construct the Datadog Cloud URL for this log.
+
+        Returns:
+            str: Full URL to view the log in Datadog UI
+        """
+        return f"https://app.{SITE}/logs?event={self.id}"
 
     def to_display_dict(self) -> dict[str, Any]:
         """
@@ -269,7 +308,7 @@ class Log:
                 if self.tags
                 else None
             ),
-            "URL": build_log_url(self.id),
+            "URL": self.build_url(),
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -292,7 +331,7 @@ class Log:
             "source": self.source,
             "status": self.status,
             "tags": self.tags,
-            "url": build_log_url(self.id),
+            "url": self.build_url(),
             "raw": self.raw,
         }
 
@@ -318,6 +357,15 @@ class SecuritySignal:
     # Raw signal
     raw: dict[str, Any] | None = None
 
+    def build_url(self) -> str:
+        """
+        Construct the Datadog Cloud SIEM URL for this security signal.
+
+        Returns:
+            str: Full URL to view the signal in Datadog UI
+        """
+        return f"https://app.{SITE}/security/signal?event={self.id}"
+
     def to_display_dict(self) -> dict[str, Any]:
         """
         Convert SecuritySignal to a dictionary optimized for human-readable display.
@@ -333,7 +381,13 @@ class SecuritySignal:
             "Message": self.message,
             "Severity": self.severity,
             "State": self.triage.state if self.triage else None,
-            "Rule URL": build_security_rule_url(self.rule_id) if self.rule_id else None,
+            "Rule URL": (
+                SecurityRule(
+                    id=self.rule_id, name="", type="", is_enabled=False
+                ).build_url()
+                if self.rule_id
+                else None
+            ),
             "Host": self.host,
             "Services": self.service,
             "Timestamp": str(self.timestamp) if self.timestamp else None,
@@ -347,7 +401,7 @@ class SecuritySignal:
                 if self.tags
                 else None
             ),
-            "URL": build_security_signal_url(self.id),
+            "URL": self.build_url(),
         }
         return remove_none_values(result)
 
@@ -373,7 +427,7 @@ class SecuritySignal:
             "message": self.message,
             "tags": self.tags,
             "triggering_log_id": self.triggering_log_id,
-            "url": build_security_signal_url(self.id),
+            "url": self.build_url(),
             "raw": self.raw,
         }
 
@@ -381,7 +435,9 @@ class SecuritySignal:
         if self.rule_id:
             result["rule"] = {
                 "id": self.rule_id,
-                "url": build_security_rule_url(self.rule_id),
+                "url": SecurityRule(
+                    id=self.rule_id, name="", type="", is_enabled=False
+                ).build_url(),
             }
 
         # Convert triage to dict if present
@@ -403,45 +459,6 @@ class SecuritySignal:
 
 
 """ HELPER FUNCTIONS """
-
-
-def build_security_signal_url(signal_id: str) -> str:
-    """
-    Construct the Datadog Cloud SIEM URL for a security signal.
-
-    Args:
-        signal_id: The security signal ID
-
-    Returns:
-        str: Full URL to view the signal in Datadog UI
-    """
-    return f"https://app.{SITE}/security/signal?event={signal_id}"
-
-
-def build_security_rule_url(rule_id: str) -> str:
-    """
-    Construct the Datadog Cloud SIEM URL for a security rule.
-
-    Args:
-        rule_id: The security rule ID
-
-    Returns:
-        str: Full URL to view the rule in Datadog UI
-    """
-    return f"https://app.{SITE}/security/rules/view/{rule_id}"
-
-
-def build_log_url(log_id: str) -> str:
-    """
-    Construct the Datadog Cloud url for a log.
-
-    Args:
-        log_id: The log id
-
-    Returns:
-        str: Full URL to view the log in Datadog UI
-    """
-    return f"https://app.{SITE}/logs?event={log_id}"
 
 
 def remove_none_values(data: dict[str, Any]) -> dict[str, Any]:
@@ -1044,6 +1061,132 @@ def get_security_signal_command(
         raise DemistoException(f"Failed to get security signal {signal_id}: {str(e)}")
 
 
+def suppress_rule_command(
+    configuration: Configuration,
+    args: dict[str, Any],
+) -> CommandResults:
+    """
+    Create a suppression rule for a security monitoring rule.
+
+    Suppressions allow you to exclude signals that match specific criteria from generating alerts.
+    This is useful for filtering out known false positives or signals from testing environments.
+
+    Args:
+        configuration: Datadog API configuration
+        args: Command arguments containing:
+            - rule_id (str, optional): The ID of the security rule to suppress - fallback to incident rule id if not provided
+
+    Returns:
+        CommandResults: XSOAR command results with suppression details
+
+    Raises:
+        DemistoException: If rule_id or name is missing, or API call fails
+    """
+    rule_id = args.get("rule_id")
+    data_exclusion_query = args.get("data_exclusion_query", "*")
+
+    # If rule_id not provided, try to get it from the current incident
+    if not rule_id:
+        incident = demisto.incident()
+        rule_id = incident.get("CustomFields", {}).get("datadogsecuritysignalruleid")
+        if not rule_id:
+            raise DemistoException(
+                "rule_id is required. Provide it as an argument or run from an incident with a Datadog Security Rule ID."
+            )
+
+    try:
+        with ApiClient(configuration) as api_client:
+            api_instance = SecurityMonitoringApi(api_client)
+
+            # Build the rule query to target this specific rule
+            rule_query = f"type:(log_detection OR signal_correlation) ruleId:{rule_id}"
+
+            # Prepare attributes
+            attrs = SecurityMonitoringSuppressionCreateAttributes(
+                enabled=True,
+                name=f"[XSOAR suppression] {rule_id}",
+                description=f"Created from Cortex XSOAR",
+                rule_query=rule_query,
+                data_exclusion_query=data_exclusion_query,
+            )
+
+            body = SecurityMonitoringSuppressionCreateRequest(
+                data=SecurityMonitoringSuppressionCreateData(
+                    attributes=attrs,
+                    type=SecurityMonitoringSuppressionType.SUPPRESSIONS,
+                )
+            )
+
+            response = api_instance.create_security_monitoring_suppression(body=body)
+            suppression_data = response.to_dict().get("data", {})
+            suppression_id = suppression_data.get("id")
+            readable_output = f"Successfully created suppression for rule {rule_id}\n"
+            readable_output += f"Suppression URL: https://app.{SITE}/security/configuration/suppressions/view/{suppression_id}"
+
+            return CommandResults(readable_output=readable_output)
+
+    except Exception as e:
+        raise DemistoException(f"Failed to suppress security rule {rule_id}: {str(e)}")
+
+
+def unsuppress_rule_command(
+    configuration: Configuration,
+    args: dict[str, Any],
+) -> CommandResults:
+    """
+    Delete a suppression rule by ID.
+
+    Args:
+        configuration: Datadog API configuration
+        args: Command arguments containing:
+            - rule_id (str, optional): The ID of the security rule to suppress - fallback to incident rule id if not provided
+
+    Returns:
+        CommandResults: XSOAR command results confirming deletion
+
+    Raises:
+        DemistoException: If rule_id is missing or API call fails
+    """
+    rule_id = args.get("rule_id")
+
+    # If rule_id not provided, try to get it from the current incident
+    if not rule_id:
+        incident = demisto.incident()
+        rule_id = incident.get("CustomFields", {}).get("datadogsecuritysignalruleid")
+        if not rule_id:
+            raise DemistoException(
+                "rule_id is required. Provide it as an argument or run from an incident with a Datadog Security Rule ID."
+            )
+
+    try:
+        with ApiClient(configuration) as api_client:
+            api_instance = SecurityMonitoringApi(api_client)
+            response = api_instance.get_suppressions_affecting_rule(rule_id=rule_id)
+            supressions_data = response.to_dict().get("data", [])
+            suppressions_ids = [s.get("id") for s in supressions_data]
+
+            readable_output = "Succesfully disabled suppressions:\n"
+            for suppression_id in suppressions_ids:
+                attrs = SecurityMonitoringSuppressionUpdateAttributes(enabled=False)
+                body = SecurityMonitoringSuppressionUpdateRequest(
+                    data=SecurityMonitoringSuppressionUpdateData(
+                        attributes=attrs,
+                        type=SecurityMonitoringSuppressionType.SUPPRESSIONS,
+                    ),
+                )
+                api_instance.update_security_monitoring_suppression(
+                    suppression_id=suppression_id,
+                    body=body,
+                )
+                url = f"https://app.{SITE}/security/configuration/suppressions/view/{suppression_id}"
+                readable_output += f"- {url}\n"
+
+            return CommandResults(readable_output=readable_output)
+
+    except Exception as e:
+        raise DemistoException(f"Failed to unsuppress rule {rule_id}: {str(e)}")
+
+
 def get_security_rule_command(
     configuration: Configuration,
     args: dict[str, Any],
@@ -1408,7 +1551,9 @@ def add_security_signal_comment_command(
         with ApiClient(configuration) as api_client:
             user_api_instance = UsersApi(api_client)
             try:
-                user_response = user_api_instance.get_user(user_id=comment_obj.user_uuid)
+                user_response = user_api_instance.get_user(
+                    user_id=comment_obj.user_uuid
+                )
                 user_data = user_response.to_dict().get("data", {})
                 attrs = user_data.get("attributes", {})
                 comment_obj.user_name = attrs.get("name")
@@ -1796,6 +1941,8 @@ def main() -> None:
             "datadog-signal-update": update_security_signal_command,
             "datadog-signal-comment-add": add_security_signal_comment_command,
             "datadog-signal-comment-list": list_security_signal_comments_command,
+            "datadog-rule-suppress": suppress_rule_command,
+            "datadog-rule-unsuppress": unsuppress_rule_command,
             "datadog-rule-get": get_security_rule_command,
             "datadog-logs-query": logs_query_command,
         }

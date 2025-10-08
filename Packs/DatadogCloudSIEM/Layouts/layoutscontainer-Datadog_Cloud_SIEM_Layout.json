@@ -181,18 +181,18 @@
                             },
                             {
                                 "endCol": 2,
-                                "fieldId": "datadogsecuritysignaltriagereason",
+                                "fieldId": "datadogsecuritysignaltriagearchivereason",
                                 "height": 22,
-                                "id": "field-datadogsecuritysignaltriagereason",
+                                "id": "field-datadogsecuritysignaltriagearchivereason",
                                 "index": 4,
                                 "sectionItemType": "field",
                                 "startCol": 0
                             },
                             {
                                 "endCol": 2,
-                                "fieldId": "datadogsecuritysignaltriagecomment",
+                                "fieldId": "datadogsecuritysignaltriagearchivecomment",
                                 "height": 44,
-                                "id": "field-datadogsecuritysignaltriagecomment",
+                                "id": "field-datadogsecuritysignaltriagearchivecomment",
                                 "index": 5,
                                 "sectionItemType": "field",
                                 "startCol": 0

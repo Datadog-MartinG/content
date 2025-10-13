@@ -12,7 +12,7 @@
     "id": "incident_datadogsecuritysignaltriggeringlogid",
     "isReadOnly": true,
     "locked": false,
-    "name": "Datadog Security Signal Triggering Log ID",
+    "name": "Datadog Cloud SIEM Security Signal Triggering Log ID",
     "neverSetAsRequired": false,
     "ownerOnly": false,
     "propagationLabels": ["all"],
@@ -22,7 +22,7 @@
     "threshold": 72,
     "type": "shortText",
     "unmapped": false,
-    "unsearchable": false,
+    "unsearchable": true,
     "useAsKpi": false,
     "version": -1,
     "fromVersion": "6.8.0"

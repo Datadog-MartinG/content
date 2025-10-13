@@ -2,6 +2,9 @@ category: Analytics & SIEM
 commonfields:
   id: DatadogCloudSIEM
   version: -1
+sectionOrder:
+  - Connect
+  - Collect
 configuration:
   - additionalinfo: Datadog website URL
     display: Server URL
@@ -21,12 +24,24 @@ configuration:
     display: API Key
     name: api_key
     type: 9
+    displaypassword: API Key
+    hiddenusername: true
     required: true
   - additionalinfo: The APP Key to use for authentication
-    display: APP Key
+    display: Application Key
     name: app_key
     type: 9
+    displaypassword: Application Key
+    hiddenusername: true
     required: true
+  - display: Trust any certificate (not secure)
+    name: insecure
+    type: 8
+    required: false
+  - display: Use system proxy settings
+    name: proxy
+    type: 8
+    required: false
   - display: Fetch incidents
     name: isFetch
     type: 8
@@ -235,7 +250,7 @@ script:
           description: URL to view the security signal in Datadog UI.
           type: String
         - contextPath: Datadog.SecuritySignal.raw
-          description: The raw signal object returned by the API
+          description: The raw signal object returned by the API.
           type: Unknown
     - arguments:
         - description: The unique identifier of the security signal to update. If not provided, will attempt to get it from the current incident.

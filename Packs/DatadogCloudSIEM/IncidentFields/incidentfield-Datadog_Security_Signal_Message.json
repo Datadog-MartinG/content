@@ -12,7 +12,7 @@
     "id": "incident_datadogsecuritysignalmessage",
     "isReadOnly": true,
     "locked": false,
-    "name": "Datadog Security Signal Message",
+    "name": "Datadog Cloud SIEM Security Signal Message",
     "neverSetAsRequired": false,
     "ownerOnly": false,
     "propagationLabels": ["all"],
@@ -22,7 +22,7 @@
     "threshold": 72,
     "type": "markdown",
     "unmapped": false,
-    "unsearchable": false,
+    "unsearchable": true,
     "useAsKpi": false,
     "version": -1,
     "fromVersion": "6.8.0"

@@ -1,6 +1,6 @@
 {
     "name": "Datadog Cloud SIEM",
-    "description": "Datadog Cloud SIEM elevates your organization’s threat detection and investigation for their dynamic, cloud-scale environments.",
+    "description": "Datadog Cloud SIEM is a scalable, cloud-native SIEM that analyzes telemetry from cloud and on-premises systems to surface actionable security signals, with out-of-the-box detection rules and dashboards to help teams investigate and respond faster.",
     "support": "xsoar",
     "currentVersion": "2.0.1",
     "author": "Cortex XSOAR",
@@ -18,5 +18,5 @@
     "useCases": ["Incident Response", "Threat Intelligence Management"],
     "keywords": ["Cloud SIEM"],
     "marketplaces": ["xsoar", "marketplacev2"],
-    "defaultDataSource": "Datadog Cloud SIEM"
+    "defaultDataSource": "DatadogCloudSIEM"
 }

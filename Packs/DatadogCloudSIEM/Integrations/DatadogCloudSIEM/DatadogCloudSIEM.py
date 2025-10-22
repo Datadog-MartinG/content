@@ -1779,6 +1779,12 @@ def fetch_incidents(
         for signal in signals:
             signal_dict = signal.to_dict()
             owner = signal_dict.get("triage", {}).get("assignee", {}).get("name", "")
+            labels = []
+
+            if signal.tags:
+                for tag in signal.tags:
+                    labels.append({"type": "tag", "value": tag})
+
             incident = {
                 "name": signal.title or f"Datadog Security Signal {signal.id}",
                 "occurred": (str(signal.timestamp) if signal.timestamp else to_datetime.isoformat()),
@@ -1786,6 +1792,7 @@ def fetch_incidents(
                 "severity": map_severity_to_xsoar(signal.severity),
                 "dbotMirrorId": signal.id,
                 "owner": owner,
+                "labels": labels,
                 "rawJSON": json.dumps(signal_dict),
             }
 

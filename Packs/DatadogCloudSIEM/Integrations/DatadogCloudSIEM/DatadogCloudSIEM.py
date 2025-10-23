@@ -612,7 +612,7 @@ def parse_security_signal(data: dict[str, Any]) -> SecuritySignal:
     """
     Parse raw security signal data from the Datadog API and convert it into a structured SecuritySignal object.
 
-    Extracts and organizes key fields from the nested API response structure, handling
+    Extracts and organizes key fields from the nested API response structure, handles
     optional fields gracefully and flattening complex nested data.
 
     Args:

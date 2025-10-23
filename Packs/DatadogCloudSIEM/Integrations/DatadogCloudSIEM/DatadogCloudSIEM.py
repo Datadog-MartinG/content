@@ -183,7 +183,7 @@ class SecurityRule:
 
     def extract_query(self) -> str:
         """
-        Extract and combine log queries from this rule's queries using OR operator.
+        Extract this rule's log queries and combine them using the OR operator.
 
         Returns:
             str: Combined query string using OR, or "*" if no queries found

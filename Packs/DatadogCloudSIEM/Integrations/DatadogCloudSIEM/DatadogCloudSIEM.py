@@ -737,7 +737,7 @@ def parse_log(data: dict[str, Any]) -> Log:
     optional fields gracefully and converting timestamps to datetime objects.
 
     Args:
-        data (Dict[str, Any]): Raw log data from Datadog API response.
+        data (Dict[str, Any]): Raw log data from the Datadog API response.
                               Expected to contain 'attributes' and other nested fields.
 
     Returns:

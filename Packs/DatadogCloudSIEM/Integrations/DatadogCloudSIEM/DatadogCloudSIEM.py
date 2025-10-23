@@ -135,7 +135,7 @@ class Comment:
 
     def to_dict(self) -> dict[str, Any]:
         """
-        Convert Comment to a plain dictionary for XSOAR context output.
+        Convert a Comment to a plain dictionary for XSOAR context output.
 
         Returns:
             Dict[str, Any]: Dictionary for context output.

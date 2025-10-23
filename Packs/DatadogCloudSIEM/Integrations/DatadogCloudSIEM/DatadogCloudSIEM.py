@@ -303,7 +303,7 @@ class Log:
         """
         Convert Log to a plain dictionary for XSOAR context output.
 
-        Converts nested objects to dictionaries and handles datetime serialization.
+        Converts nested objects to dictionaries and serializes datetime objects.
         Excludes None values to prevent overriding existing fields during partial updates.
 
         Returns:

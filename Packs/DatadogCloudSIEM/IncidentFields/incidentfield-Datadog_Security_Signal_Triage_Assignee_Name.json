@@ -5,7 +5,7 @@
     "cliName": "datadogsecuritysignaltriageassigneename",
     "closeForm": false,
     "content": true,
-    "description": "The name of the user assigned to triage this security signal.",
+    "description": "The user assigned to triage this security signal.",
     "editForm": true,
     "group": 0,
     "hidden": false,

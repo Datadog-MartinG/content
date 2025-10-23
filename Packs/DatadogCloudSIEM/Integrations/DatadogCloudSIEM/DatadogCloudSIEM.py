@@ -784,7 +784,7 @@ def parse_log(data: dict[str, Any]) -> Log:
 
 def security_signals_search_query(args: dict[str, Any]) -> str:
     """
-    Build a Datadog search query string for filtering security signals based on provided arguments.
+    Builds a Datadog search query string to filter security signals based on the provided arguments.
 
     Constructs a query using Datadog's search syntax with AND operators between conditions.
     Supports filtering by state, severity, rule name, source, and custom queries.

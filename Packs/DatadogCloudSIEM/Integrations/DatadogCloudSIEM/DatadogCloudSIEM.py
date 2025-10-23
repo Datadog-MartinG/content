@@ -610,7 +610,7 @@ def parse_security_comment(data: dict[str, Any]) -> Comment:
 
 def parse_security_signal(data: dict[str, Any]) -> SecuritySignal:
     """
-    Parse raw security signal data from Datadog API into a structured SecuritySignal object.
+    Parse raw security signal data from the Datadog API and convert it into a structured SecuritySignal object.
 
     Extracts and organizes key fields from the nested API response structure, handling
     optional fields gracefully and flattening complex nested data.

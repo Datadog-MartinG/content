@@ -177,7 +177,7 @@ class SecurityRule:
         Construct the Datadog Cloud SIEM URL for this security rule.
 
         Returns:
-            str: Full URL to view the rule in Datadog UI
+            str: Full URL to view the rule in the Datadog UI
         """
         return f"https://app.{SITE}/security/rules/view/{self.id}"
 

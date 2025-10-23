@@ -731,7 +731,7 @@ def parse_security_rule(data: dict[str, Any]) -> SecurityRule:
 
 def parse_log(data: dict[str, Any]) -> Log:
     """
-    Parse raw log data from Datadog API into a structured Log object.
+    Parse raw log data from the Datadog API into a structured Log object.
 
     Extracts and organizes key fields from the nested API response structure, handling
     optional fields gracefully and converting timestamps to datetime objects.

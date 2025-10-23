@@ -274,7 +274,7 @@ class Log:
         Construct the Datadog Cloud URL for this log.
 
         Returns:
-            str: Full URL to view the log in Datadog UI
+            str: Full URL to view the log in the Datadog UI
         """
         return f"https://app.{SITE}/logs?event={self.id}"
 

@@ -5,7 +5,7 @@
     "cliName": "datadogsecuritysignalruleurl",
     "closeForm": false,
     "content": true,
-    "description": "URL to view the security rule in the Datadog Cloud SIEM console.",
+    "description": "URL for viewing the security rule in the Datadog Cloud SIEM console.",
     "editForm": true,
     "group": 0,
     "hidden": false,

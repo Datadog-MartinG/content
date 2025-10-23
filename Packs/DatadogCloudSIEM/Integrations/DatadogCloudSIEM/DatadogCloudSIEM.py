@@ -498,7 +498,7 @@ def convert_datetime_to_str(data: dict) -> dict:
         data (Dict): The input dictionary to be converted.
 
     Returns:
-        Dict: A new dictionary with the same structure as the input dictionary, but with datetime objects
+        Dict: A new dictionary with the same structure as the input dictionary, but with all datetime objects
         replaced by ISO-formatted strings.
     """
     for key, value in data.items():

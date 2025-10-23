@@ -797,7 +797,7 @@ def security_signals_search_query(args: dict[str, Any]) -> str:
             - query (str): Additional custom query string
 
     Returns:
-        str: Formatted query string for Datadog API. Returns "*" if no conditions provided.
+       str: Formatted Datadog API query string. Returns "*" if no conditions are provided.
 
     Examples:
         >>> args = {"state": "open", "severity": "high"}

@@ -216,7 +216,7 @@ class SecurityRule:
 
     def to_display_dict(self) -> dict[str, Any]:
         """
-        Convert SecurityRule to a dictionary optimized for human-readable display.
+        Convert a SecurityRule to a dictionary optimized for human-readable display.
 
         Returns:
             Dict[str, Any]: Dictionary with display-friendly field names and values.

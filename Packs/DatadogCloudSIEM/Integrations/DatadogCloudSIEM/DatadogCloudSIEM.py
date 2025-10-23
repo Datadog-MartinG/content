@@ -703,7 +703,7 @@ def parse_security_rule(data: dict[str, Any]) -> SecurityRule:
     Parse raw security rule data from the Datadog API into a structured SecurityRule object.
 
     Args:
-        data (Dict[str, Any]): Raw security rule data from Datadog API response.
+        data (Dict[str, Any]): Raw security rule data from the Datadog API response.
 
     Returns:
         SecurityRule: Structured dataclass containing parsed rule information.

@@ -232,7 +232,7 @@ class SecurityRule:
 
     def to_dict(self) -> dict[str, Any]:
         """
-        Convert SecurityRule to a plain dictionary for XSOAR context output.
+        Convert a SecurityRule to a plain dictionary for XSOAR context output.
 
         Returns:
             Dict[str, Any]: Dictionary for context output.

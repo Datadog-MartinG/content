@@ -383,7 +383,7 @@ class SecuritySignal:
         """
         Convert SecuritySignal to a plain dictionary for XSOAR context output.
 
-        Converts nested dataclass objects to dictionaries and handles datetime serialization.
+        Converts nested dataclass objects to dictionaries and serializes datetime objects.
         Excludes None values to prevent overriding existing fields during partial updates.
 
         Returns:

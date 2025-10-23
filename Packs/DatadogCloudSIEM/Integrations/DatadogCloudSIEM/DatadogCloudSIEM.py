@@ -978,7 +978,7 @@ def get_security_signal_command(
     Args:
         configuration: Datadog API configuration
         args: Command arguments containing:
-            - signal_id (str, optional): The ID of the signal to retrieve - fallback to incident signal id if not provided
+            - signal_id (str, optional): The ID of the signal to retrieve; falls back to the incident signal ID if not provided.
 
     Returns:
         CommandResults: XSOAR command results with signal data

@@ -122,7 +122,7 @@ class Comment:
 
     def to_display_dict(self) -> dict[str, Any]:
         """
-        Convert Comment to a dictionary optimized for human-readable display.
+        Convert a Comment to a dictionary optimized for human-readable display.
 
         Returns:
             Dict[str, Any]: Dictionary with display-friendly field names and values.

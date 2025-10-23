@@ -492,7 +492,7 @@ def add_utc_offset(dt_str: str):
 
 def convert_datetime_to_str(data: dict) -> dict:
     """
-    Converts any datetime objects found in the input dictionary to ISO-formatted strings.
+    Converts datetime objects found in the input dictionary to ISO-formatted strings.
 
     Args:
         data (Dict): The input dictionary to be converted.

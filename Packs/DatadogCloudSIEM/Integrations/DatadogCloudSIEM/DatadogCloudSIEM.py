@@ -1656,6 +1656,7 @@ def logs_query_command(
                     query=search_query,
                     _from=from_datetime.isoformat() if from_datetime else unset,
                     to=to_datetime.isoformat() if to_datetime else unset,
+                    storage_tier=args.get("storage_tier", unset),
                 ),
                 page=LogsListRequestPage(limit=limit),
                 sort=sort_order,

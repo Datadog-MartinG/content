@@ -1044,7 +1044,8 @@ def suppress_rule_command(
     Args:
         configuration: Datadog API configuration
         args: Command arguments containing:
-            - rule_id (str, optional): The ID of the security rule to suppress; falls back to the incident's rule ID if not provided.
+            - rule_id (str, optional): The ID of the security rule to suppress;
+              falls back to the incident's rule ID if not provided.
 
     Returns:
         CommandResults: XSOAR command results with suppression details

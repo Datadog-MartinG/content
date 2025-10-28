@@ -29,6 +29,7 @@ There are no context outputs for this script. The script updates the incident fi
 ## Use Cases
 
 ---
+
 * Synchronize incident fields with the latest Datadog security signal data
 * Update incident owner based on Datadog signal assignee
 * Automatically close XSOAR incidents when the corresponding Datadog security signal is archived

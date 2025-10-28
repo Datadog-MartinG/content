@@ -501,8 +501,8 @@
         ]
     },
     "group": "incident",
-    "id": "DatadogCloudSIEMLayout",
-    "name": "DatadogCloudSIEMLayout",
+    "id": "Datadog Cloud SIEM Layout",
+    "name": "Datadog Cloud SIEM Layout",
     "system": false,
     "version": -1,
     "fromVersion": "6.8.0"

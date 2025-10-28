@@ -20,9 +20,7 @@ def main():
         if not signal:
             return_error("No signal data returned from Datadog.")
 
-        mapped_data = demisto.mapObject(
-            signal, "Datadog Cloud SIEM - Incoming Mapper", "DatadogCloudSIEM"
-        )
+        mapped_data = demisto.mapObject(signal, "Datadog Cloud SIEM - Incoming Mapper", "DatadogCloudSIEM")
 
         custom_fields = {}
         for key, value in mapped_data.items():
@@ -47,11 +45,7 @@ def main():
                     "closeInvestigation",
                     {"closeReason": close_reason, "closeNotes": close_notes},
                 )
-            return_results(
-                CommandResults(
-                    readable_output="Successfully synced incident fields from Datadog."
-                )
-            )
+            return_results(CommandResults(readable_output="Successfully synced incident fields from Datadog."))
         else:
             return_results(CommandResults(readable_output="No fields to update."))
 

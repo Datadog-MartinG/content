@@ -1946,19 +1946,20 @@ def fetch_incidents(
 
         # Get last run to handle incremental fetch
         last_run = demisto.getLastRun()
-        last_fetch_time = last_run.get("last_fetch_time")
+        last_fetch_timestamp: int = last_run.get("last_fetch_timestamp", 0)  # type: ignore
+        existing_ids: list[str] = last_run.get("existing_ids", [])  # type: ignore
 
         # Calculate fetch time range
-        if last_fetch_time:
-            # Incremental fetch - get signals since last fetch
-            from_datetime = parse(last_fetch_time, settings={"TIMEZONE": "UTC"})
-            demisto.debug(f"Fetching incidents since last run: {last_fetch_time}")
+        if last_fetch_timestamp:
+            # Incremental fetch - get signals since last fetch (timestamp is in milliseconds)
+            from_datetime = datetime.fromtimestamp(last_fetch_timestamp / 1000, tz=timezone.utc)
+            demisto.debug(f"Fetching incidents since last run: {from_datetime.isoformat()}")
         else:
             # First fetch - use first_fetch parameter
             from_datetime = parse(f"-{first_fetch}", settings={"TIMEZONE": "UTC"})
             demisto.debug(f"First fetch - fetching incidents from: {first_fetch} ago")
 
-        to_datetime = datetime.now()
+        to_datetime = datetime.now(timezone.utc)
 
         # Build filter query
         filter_args = {
@@ -1981,10 +1982,17 @@ def fetch_incidents(
 
         demisto.debug(f"Fetched {len(signals)} security signals")
 
-        # Convert signals to XSOAR incidents
+        # Convert signals to XSOAR incidents with deduplication
         incidents = []
-        latest_signal_time = last_fetch_time
+        latest_signal_timestamp = last_fetch_timestamp or 0
+        new_ids = []
+
         for signal in signals:
+            # Skip if already fetched (deduplication)
+            if signal.id in existing_ids:
+                demisto.debug(f"Skipping duplicate signal: {signal.id}")
+                continue
+
             signal_dict = signal.to_dict()
             owner = signal_dict.get("triage", {}).get("assignee", {}).get("name", "")
             labels = []
@@ -1993,16 +2001,12 @@ def fetch_incidents(
                 for tag in signal.tags:
                     labels.append({"type": "tag", "value": tag})
 
-            mirror_direction = params.get('mirror_direction', 'None')
+            mirror_direction = params.get("mirror_direction", "None")
             mirror_instance = demisto.integrationInstance()
 
             incident = {
                 "name": signal.title or f"Datadog Security Signal {signal.id}",
-                "occurred": (
-                    str(signal.timestamp)
-                    if signal.timestamp
-                    else to_datetime.isoformat()
-                ),
+                "occurred": (str(signal.timestamp) if signal.timestamp else to_datetime.isoformat()),
                 "details": signal.message,
                 "severity": map_severity_to_xsoar(signal.severity),
                 "dbotMirrorId": signal.id,
@@ -2014,22 +2018,31 @@ def fetch_incidents(
             }
 
             incidents.append(incident)
+            new_ids.append(signal.id)
 
-            # Track latest signal timestamp for next fetch
+            # Track latest signal timestamp for next fetch (convert to milliseconds)
             if signal.timestamp:
-                signal_time = str(signal.timestamp)
-                if not latest_signal_time or signal_time > latest_signal_time:
-                    latest_signal_time = signal_time
+                signal_timestamp_ms = int(signal.timestamp.timestamp() * 1000)
+                if signal_timestamp_ms > latest_signal_timestamp:
+                    latest_signal_timestamp = signal_timestamp_ms
 
-        demisto.debug(f"Created {len(incidents)} incidents")
+        demisto.debug(f"Created {len(incidents)} incidents (skipped {len(signals) - len(incidents)} duplicates)")
 
-        # Update last run with latest timestamp
-        if incidents and latest_signal_time:
-            demisto.setLastRun({"last_fetch_time": latest_signal_time})
-            demisto.debug(f"Updated last_fetch_time to: {latest_signal_time}")
-        elif not last_fetch_time:
-            # First run with no incidents - still save the from_datetime
-            demisto.setLastRun({"last_fetch_time": from_datetime.isoformat()})  # type: ignore
+        # Update last run with latest timestamp and IDs (keep last 1000 IDs to prevent memory issues)
+        all_ids = list(set(existing_ids + new_ids))[-1000:]
+
+        if incidents and latest_signal_timestamp:
+            demisto.setLastRun(
+                {
+                    "last_fetch_timestamp": latest_signal_timestamp,
+                    "existing_ids": all_ids,
+                }
+            )
+            demisto.debug(f"Updated last_fetch_timestamp to: {latest_signal_timestamp}")
+        elif not last_fetch_timestamp:
+            # First run with no incidents - still save the from_datetime as timestamp
+            first_run_timestamp = int(from_datetime.timestamp() * 1000)  # type: ignore
+            demisto.setLastRun({"last_fetch_timestamp": first_run_timestamp, "existing_ids": all_ids})
 
         # Send incidents to XSOAR
         demisto.incidents(incidents)

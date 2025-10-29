@@ -1,6 +1,6 @@
 {
     "associatedToAll": false,
-    "associatedTypes": ["DatadogCloudSIEM"],
+    "associatedTypes": ["Datadog Cloud SIEM"],
     "caseInsensitive": true,
     "cliName": "datadogsecuritysignaltags",
     "closeForm": false,

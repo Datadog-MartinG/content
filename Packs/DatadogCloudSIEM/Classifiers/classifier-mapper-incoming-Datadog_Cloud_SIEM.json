@@ -4,7 +4,7 @@
     "type": "mapping-incoming",
     "description": "Maps incoming Datadog Cloud SIEM security signals to XSOAR incident fields",
     "mapping": {
-        "DatadogCloudSIEM": {
+        "Datadog Cloud SIEM": {
             "dontMapEventToLabels": false,
             "internalMapping": {
                 "Datadog Security Signal ID": {

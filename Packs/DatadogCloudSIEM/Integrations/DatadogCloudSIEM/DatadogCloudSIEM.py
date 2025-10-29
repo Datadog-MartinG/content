@@ -1993,12 +1993,21 @@ def fetch_incidents(
                 for tag in signal.tags:
                     labels.append({"type": "tag", "value": tag})
 
+            mirror_direction = params.get('mirror_direction', 'None')
+            mirror_instance = demisto.integrationInstance()
+
             incident = {
                 "name": signal.title or f"Datadog Security Signal {signal.id}",
-                "occurred": (str(signal.timestamp) if signal.timestamp else to_datetime.isoformat()),
+                "occurred": (
+                    str(signal.timestamp)
+                    if signal.timestamp
+                    else to_datetime.isoformat()
+                ),
                 "details": signal.message,
                 "severity": map_severity_to_xsoar(signal.severity),
                 "dbotMirrorId": signal.id,
+                "dbotMirrorInstance": mirror_instance,
+                "dbotMirrorDirection": mirror_direction,
                 "owner": owner,
                 "labels": labels,
                 "rawJSON": json.dumps(signal_dict),
@@ -2085,56 +2094,3 @@ def main() -> None:
 
 if __name__ in ("__main__", "__builtin__", "builtins"):
     main()
-
-"""
-BITS AI CORE:
-
-eval "$(dd-auth -s dd.datad0g.com --output | sed 's/^/export /')"
-curl -s "https://dd.datad0g.com/api/unstable/security_monitoring/investigations" \
--d 'page[limit]=2' \
--H "dd-api-key: ${DD_API_KEY}" \
--H "dd-application-key: ${DD_APP_KEY}" | jq
-
-returns a 500s on staging
-
-
-eval $(dd-auth --output)
-curl -s "https://app.datadoghq.com/api/unstable/security_monitoring/investigations" \
--H "dd-api-key: ${DD_API_KEY}" \
--H "dd-application-key: ${DD_APP_KEY}" | jq
-
-is able to list some investigation on prod.
-{
-      "id": "AQAAAZotvUguxPjcuAAAAABBWm90dlVndUFBQk4yUHNNWVo4b1VnQUE",
-      "type": "investigation_response",
-      "attributes": {
-        "steps": [...]
-    ...
-
-    
-Different output response format:
-
-curl -s "https://app.datadoghq.com/api/unstable/security_monitoring/investigations/AQAAAZotvUguxPjcuAAAAABBWm90dlVndUFBQk4yUHNNWVo4b1VnQUE" \
--H "dd-api-key: ${DD_API_KEY}" \
--H "dd-application-key: ${DD_APP_KEY}" | jq
-
-> light response, without all the investigation details
-
-
-curl -s -X POST "https://app.datadoghq.com/api/unstable/security_monitoring/investigations" \
---data-raw '{"data":{"type":"siem_investigation_agent","attributes":{"signal_id":"AQAAAZotvUguxPjcuAAAAABBWm90dlVndUFBQk4yUHNNWVo4b1VnQUE"}}, }' \
--H "dd-api-key: ${DD_API_KEY}" \
--H "dd-application-key: ${DD_APP_KEY}" | jq
-
-> rich response with the full investigation details + the documentation does not clarify if this is doing a 
-simple fetch or rerunning the entire investigation
-
-
-curl -X POST 'https://app.datadoghq.com/api/v2/security_monitoring/signals/investigation' \
-  -b '_dd_did=07ad9b15-f40c-4a3e-8d63-82dd11fa675b; _dd_device_id=9etc9ri27p; datadog-theme=light; intercom-device-id-x9u0q6k2=9c9b1aab-60ad-4a45-a7f4-65a4393dc309; redirector-token=Eb1TdvGx5FtoeXYKx/RJ5e7kt8QRV06TV3uZ6N42mhM=; _dd_device_id=9etc9ri27p; dogweb=812f975888bed8e2baf223bc3669e3f7299e42b5e3f00833d9594e8f897006ca7cdd48e9; dogwebu=fb40a80e64770a72f6009cef860f9d0751fbb8f8; intercom-session-x9u0q6k2=d3pWR1pGNWs4aTljWVdiYjJLVERpc3BaUEtWNEkvQW44bFYzU21hMzBOc215ZkZrTG54TzdaZkJpQ2Y0M2Y3b1BDaGF5Tnc5ck42alRSbGVrOFpsSXVsWDQvbEh3bnhBRXVTM2ZWYUtFSjA9LS1LRlF3WWwyU2N0QlRWM1NzK0w4UmxRPT0=--2a9e2b659fa13e487970213d193781a12e20e69b; _dd_s=aid=69dc71bf-bde0-4b50-9c46-61cd4bacac8a&logs=1&id=ab0206a2-bbb5-427a-975f-0439b02f1811&created=1761736187304&expire=1761738945666&rum=1&c=0' \
-  -H 'x-csrf-token: ae076185ce7c8ea9e79a02ddc5c381d5af0bbc0c' \
-  --data-raw '{"data":{"type":"siem_investigation_agent","attributes":{"signal_id":"AQAAAZotvUguxPjcuAAAAABBWm90dlVndUFBQk4yUHNNWVo4b1VnQUE"}},"_authentication_token":"ae076185ce7c8ea9e79a02ddc5c381d5af0bbc0c"}'
-
-  
-  
-  """

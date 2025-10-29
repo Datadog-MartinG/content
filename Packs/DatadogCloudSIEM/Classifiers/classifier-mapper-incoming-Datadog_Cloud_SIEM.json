@@ -54,6 +54,9 @@
                 },
                 "Datadog Security Signal Triage Assignee Name": {
                     "simple": "triage.assignee.name"
+                },
+                "Datadog Security Signal Investigation Verdict": {
+                    "simple": "verdict"
                 }
             }
         }

@@ -181,6 +181,15 @@
                             },
                             {
                                 "endCol": 2,
+                                "fieldId": "datadogsecuritysignalinvestigationverdict",
+                                "height": 22,
+                                "id": "field-datadogsecuritysignalinvestigationverdict",
+                                "index": 2,
+                                "sectionItemType": "field",
+                                "startCol": 0
+                            },
+                            {
+                                "endCol": 2,
                                 "fieldId": "datadogsecuritysignaltriagearchivereason",
                                 "height": 22,
                                 "id": "field-datadogsecuritysignaltriagearchivereason",

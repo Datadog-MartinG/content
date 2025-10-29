@@ -106,6 +106,9 @@ script:
         - contextPath: Datadog.SecuritySignal.event_id
           description: The event ID of the security signal.
           type: String
+        - contextPath: Datadog.SecuritySignal.verdict
+          description: The BitsAI investigation verdict for the security signal.
+          type: String
         - contextPath: Datadog.SecuritySignal.timestamp
           description: The timestamp when the security signal was generated.
           type: String
@@ -216,6 +219,9 @@ script:
         - contextPath: Datadog.SecuritySignal.event_id
           description: The event ID of the security signal.
           type: String
+        - contextPath: Datadog.SecuritySignal.verdict
+          description: The BitsAI investigation verdict for the security signal.
+          type: String
         - contextPath: Datadog.SecuritySignal.timestamp
           description: The timestamp when the security signal was generated.
           type: String
@@ -301,6 +307,9 @@ script:
           type: String
         - contextPath: Datadog.SecuritySignal.event_id
           description: The event ID of the security signal.
+          type: String
+        - contextPath: Datadog.SecuritySignal.verdict
+          description: The BitsAI investigation verdict for the security signal.
           type: String
         - contextPath: Datadog.SecuritySignal.timestamp
           description: The timestamp when the security signal was generated.

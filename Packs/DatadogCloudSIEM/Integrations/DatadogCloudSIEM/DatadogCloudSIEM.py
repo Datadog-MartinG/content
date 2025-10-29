@@ -88,9 +88,7 @@ INTEGRATION_CONTEXT_NAME = "Datadog"
 SECURITY_SIGNAL_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecuritySignal"
 SECURITY_RULE_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecurityRule"
 SECURITY_COMMENT_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecurityComment"
-SECURITY_INVESTIGATION_CONTEXT_NAME = (
-    f"{INTEGRATION_CONTEXT_NAME}.SecurityInvestigation"
-)
+SECURITY_INVESTIGATION_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecurityInvestigation"
 LOG_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.Log"
 NO_RESULTS_FROM_API_MSG = "API didn't return any results for given search parameters."
 ERROR_MSG = "Something went wrong!\n"
@@ -293,11 +291,7 @@ class SecurityRule:
             "Type": self.type,
             "Is Enabled": self.is_enabled,
             "Created At": self.created_at,
-            "Tags": (
-                ", ".join(self.tags[:5]) + ("..." if len(self.tags) > 5 else "")
-                if self.tags
-                else None
-            ),
+            "Tags": (", ".join(self.tags[:5]) + ("..." if len(self.tags) > 5 else "") if self.tags else None),
             "URL": self.build_url(),
         }
 
@@ -361,20 +355,12 @@ class Log:
         """
         return {
             "Timestamp": str(self.timestamp) if self.timestamp else None,
-            "Message": (
-                self.message[:100] + "..."
-                if self.message and len(self.message) > 100
-                else self.message
-            ),
+            "Message": (self.message[:100] + "..." if self.message and len(self.message) > 100 else self.message),
             "Service": self.service,
             "Host": self.host,
             "Source": self.source,
             "Status": self.status,
-            "Tags": (
-                ", ".join(self.tags[:3]) + ("..." if len(self.tags) > 3 else "")
-                if self.tags
-                else None
-            ),
+            "Tags": (", ".join(self.tags[:3]) + ("..." if len(self.tags) > 3 else "") if self.tags else None),
             "URL": self.build_url(),
         }
 
@@ -410,6 +396,7 @@ class Log:
 class SecuritySignal:
     id: str
     event_id: str
+    bits_investigator_verdict: str | None = None
     timestamp: datetime | None = None
     host: str | None = None
     service: str | None = None
@@ -447,27 +434,14 @@ class SecuritySignal:
             "Title": self.title,
             "Message": self.message,
             "Severity": self.severity,
+            "Verdict": self.bits_investigator_verdict,
             "State": self.triage.state if self.triage else None,
-            "Rule URL": (
-                SecurityRule(
-                    id=self.rule_id, name="", type="", is_enabled=False
-                ).build_url()
-                if self.rule_id
-                else None
-            ),
+            "Rule URL": (SecurityRule(id=self.rule_id, name="", type="", is_enabled=False).build_url() if self.rule_id else None),
             "Host": self.host,
             "Services": self.service,
             "Timestamp": str(self.timestamp) if self.timestamp else None,
-            "Assignee": (
-                self.triage.assignee.name
-                if (self.triage and self.triage.assignee)
-                else None
-            ),
-            "Tags": (
-                ", ".join(self.tags[:5]) + ("..." if len(self.tags) > 5 else "")
-                if self.tags
-                else None
-            ),
+            "Assignee": (self.triage.assignee.name if (self.triage and self.triage.assignee) else None),
+            "Tags": (", ".join(self.tags[:5]) + ("..." if len(self.tags) > 5 else "") if self.tags else None),
             "URL": self.build_url(),
         }
         return remove_none_values(result)
@@ -486,6 +460,7 @@ class SecuritySignal:
         result = {
             "id": self.id,
             "event_id": self.event_id,
+            "verdict": self.bits_investigator_verdict,
             "timestamp": str(self.timestamp) if self.timestamp else None,
             "host": self.host,
             "service": self.service,
@@ -502,9 +477,7 @@ class SecuritySignal:
         if self.rule_id:
             result["rule"] = {
                 "id": self.rule_id,
-                "url": SecurityRule(
-                    id=self.rule_id, name="", type="", is_enabled=False
-                ).build_url(),
+                "url": SecurityRule(id=self.rule_id, name="", type="", is_enabled=False).build_url(),
             }
 
         # Convert triage to dict if present
@@ -789,6 +762,7 @@ def parse_security_signal(data: dict[str, Any]) -> SecuritySignal:
         **attrs.get("workflow", {}),
         **custom.get("workflow", {}),
     }
+    bits_investigator = workflow.get("bits_investigator", {})
     rule_d = workflow.get("rule", {})
     triage_d = workflow.get("triage", {})
     assignee_d = triage_d.get("assignee", {})
@@ -821,6 +795,7 @@ def parse_security_signal(data: dict[str, Any]) -> SecuritySignal:
     return SecuritySignal(
         id=signal_id,
         event_id=event_id,
+        bits_investigator_verdict=bits_investigator.get("state"),
         timestamp=attrs.get("timestamp"),
         host=attrs.get("host"),
         service=service_str,
@@ -893,9 +868,7 @@ def parse_log(data: dict[str, Any]) -> Log:
     timestamp = None
     if attrs.get("timestamp"):
         try:
-            timestamp = datetime.fromisoformat(
-                attrs.get("timestamp", "").replace("Z", "+00:00")
-            )
+            timestamp = datetime.fromisoformat(attrs.get("timestamp", "").replace("Z", "+00:00"))
         except (ValueError, AttributeError):
             # Keep as string if parsing fails
             timestamp = None
@@ -1198,9 +1171,7 @@ def get_security_signal_investigation_command(
         )
 
     except Exception as e:
-        raise DemistoException(
-            f"Failed to get security signal investigation for signal {signal_id}: {str(e)}"
-        )
+        raise DemistoException(f"Failed to get security signal investigation for signal {signal_id}: {str(e)}")
 
 
 def get_security_signal_command(
@@ -1235,9 +1206,7 @@ def get_security_signal_command(
     try:
         with ApiClient(configuration) as api_client:
             api_instance = SecurityMonitoringApi(api_client)
-            signal_response = api_instance.get_security_monitoring_signal(
-                signal_id=signal_id
-            )
+            signal_response = api_instance.get_security_monitoring_signal(signal_id=signal_id)
             results = signal_response.to_dict()
             data = results.get("data", {})
 
@@ -1255,9 +1224,7 @@ def get_security_signal_command(
             # Create human-readable summary using the display dictionary
             signal_display = signal.to_display_dict()
 
-            readable_output = lookup_to_markdown(
-                [signal_display], "Security Signal Details"
-            )
+            readable_output = lookup_to_markdown([signal_display], "Security Signal Details")
 
             return CommandResults(
                 readable_output=readable_output,
@@ -1446,9 +1413,7 @@ def get_security_rule_command(
             # Create human-readable summary using the display dictionary
             rule_display = rule.to_display_dict()
 
-            readable_output = lookup_to_markdown(
-                [rule_display], "Security Rule Details"
-            )
+            readable_output = lookup_to_markdown([rule_display], "Security Rule Details")
 
             return CommandResults(
                 readable_output=readable_output,
@@ -1499,9 +1464,7 @@ def get_security_signal_list_command(
             from_datetime = parse(from_date, settings={"TIMEZONE": "UTC"})
             to_datetime = parse(to_date, settings={"TIMEZONE": "UTC"})
         except Exception as e:
-            raise DemistoException(
-                f"Invalid date format. Use formats like '7 days ago', '2023-01-01T00:00:00Z': {str(e)}"
-            )
+            raise DemistoException(f"Invalid date format. Use formats like '7 days ago', '2023-01-01T00:00:00Z': {str(e)}")
 
         # Use helper function to fetch signals
         signals_objs = fetch_security_signals(
@@ -1514,9 +1477,7 @@ def get_security_signal_list_command(
         )
 
         if not signals_objs:
-            readable_output = (
-                "No security signals found matching the specified criteria."
-            )
+            readable_output = "No security signals found matching the specified criteria."
             return CommandResults(
                 readable_output=readable_output,
                 outputs_prefix=SECURITY_SIGNAL_CONTEXT_NAME,
@@ -1533,9 +1494,7 @@ def get_security_signal_list_command(
             display_data.append(signal.to_display_dict())
 
         # Create human-readable output
-        readable_output = lookup_to_markdown(
-            display_data, f"Security Signals ({len(signals)} results)"
-        )
+        readable_output = lookup_to_markdown(display_data, f"Security Signals ({len(signals)} results)")
 
         return CommandResults(
             readable_output=readable_output,
@@ -1596,9 +1555,7 @@ def update_security_signal_command(
     if state is not None:
         valid_states = ["open", "under_review", "archived"]
         if state not in valid_states:
-            raise DemistoException(
-                f"Invalid state '{state}'. Valid states are: {', '.join(valid_states)}"
-            )
+            raise DemistoException(f"Invalid state '{state}'. Valid states are: {', '.join(valid_states)}")
 
     try:
         with ApiClient(configuration) as api_client:
@@ -1616,25 +1573,17 @@ def update_security_signal_command(
                     )
                     users = res.get("data", [])
                     if len(users) == 0:
-                        raise DemistoException(
-                            f"Could not determine any user for name or email: {assignee}"
-                        )
+                        raise DemistoException(f"Could not determine any user for name or email: {assignee}")
                     if len(users) > 1:
-                        users = {
-                            u.get("attributes", {}).get("email", "") for u in users
-                        }
-                        raise DemistoException(
-                            f"Could not determine the user to assign to from list: {users}"
-                        )
+                        users = {u.get("attributes", {}).get("email", "") for u in users}
+                        raise DemistoException(f"Could not determine the user to assign to from list: {users}")
                     assignee_uuid = users[0].get("id")
 
                 # Always update assignee - either with found assignee_uuid or by unassigning
                 assignee_body = SecurityMonitoringSignalAssigneeUpdateRequest(
                     data=SecurityMonitoringSignalAssigneeUpdateData(
                         attributes=SecurityMonitoringSignalAssigneeUpdateAttributes(
-                            assignee=SecurityMonitoringTriageUser(
-                                uuid=assignee_uuid or ""
-                            ),
+                            assignee=SecurityMonitoringTriageUser(uuid=assignee_uuid or ""),
                         ),
                     ),
                 )
@@ -1716,9 +1665,7 @@ def add_security_signal_comment_command(
         )
 
         if not comments_response.ok:
-            raise DemistoException(
-                f"API request failed with status {comments_response.status_code}: {comments_response.text}"
-            )
+            raise DemistoException(f"API request failed with status {comments_response.status_code}: {comments_response.text}")
 
         data = comments_response.json().get("data", {})
         comment_obj = parse_security_comment(data)
@@ -1727,9 +1674,7 @@ def add_security_signal_comment_command(
         with ApiClient(configuration) as api_client:
             user_api_instance = UsersApi(api_client)
             try:
-                user_response = user_api_instance.get_user(
-                    user_id=comment_obj.user_uuid
-                )
+                user_response = user_api_instance.get_user(user_id=comment_obj.user_uuid)
                 user_data = user_response.to_dict().get("data", {})
                 attrs = user_data.get("attributes", {})
                 comment_obj.user_name = attrs.get("name")
@@ -1741,9 +1686,7 @@ def add_security_signal_comment_command(
         display_data = comment_obj.to_display_dict()
         output = comment_obj.to_dict()
 
-        readable_output = lookup_to_markdown(
-            [display_data], "Comment Added Successfully"
-        )
+        readable_output = lookup_to_markdown([display_data], "Comment Added Successfully")
 
         return CommandResults(
             readable_output=readable_output,
@@ -1830,9 +1773,7 @@ def list_security_signal_comments_command(
         display_data = [c.to_display_dict() for c in comments]
         outputs = [c.to_dict() for c in comments]
 
-        readable_output = lookup_to_markdown(
-            display_data, f"Security Signal Comments ({len(comments)} results)"
-        )
+        readable_output = lookup_to_markdown(display_data, f"Security Signal Comments ({len(comments)} results)")
 
         return CommandResults(
             readable_output=readable_output,
@@ -1874,9 +1815,7 @@ def logs_query_command(
         # If no query provided, try to get it from incident's rule
         if not has_query:
             incident = demisto.incident()
-            rule_id = incident.get("CustomFields", {}).get(
-                "datadogsecuritysignalruleid"
-            )
+            rule_id = incident.get("CustomFields", {}).get("datadogsecuritysignalruleid")
 
             if not rule_id:
                 raise DemistoException(
@@ -1886,9 +1825,7 @@ def logs_query_command(
             # Fetch the rule and extract the query
             with ApiClient(configuration) as api_client:
                 api_instance = SecurityMonitoringApi(api_client)
-                rule_response = api_instance.get_security_monitoring_rule(
-                    rule_id=rule_id
-                )
+                rule_response = api_instance.get_security_monitoring_rule(rule_id=rule_id)
                 rule_data = rule_response.to_dict()
                 rule = parse_security_rule(rule_data)
 
@@ -1902,11 +1839,7 @@ def logs_query_command(
         if sort not in ["asc", "desc"]:
             raise DemistoException("Sort must be either 'asc' or 'desc'")
 
-        sort_order = (
-            LogsSort.TIMESTAMP_ASCENDING
-            if sort == "asc"
-            else LogsSort.TIMESTAMP_DESCENDING
-        )
+        sort_order = LogsSort.TIMESTAMP_ASCENDING if sort == "asc" else LogsSort.TIMESTAMP_DESCENDING
 
         search_query = args.get("query", "*")
 
@@ -1918,9 +1851,7 @@ def logs_query_command(
             from_datetime = parse(from_date, settings={"TIMEZONE": "UTC"})
             to_datetime = parse(to_date, settings={"TIMEZONE": "UTC"})
         except Exception as e:
-            raise DemistoException(
-                f"Invalid date format. Use formats like '7 days ago', '2023-01-01T00:00:00Z': {str(e)}"
-            )
+            raise DemistoException(f"Invalid date format. Use formats like '7 days ago', '2023-01-01T00:00:00Z': {str(e)}")
 
         with ApiClient(configuration) as api_client:
             logs_api_instance = LogsApi(api_client)
@@ -2064,11 +1995,7 @@ def fetch_incidents(
 
             incident = {
                 "name": signal.title or f"Datadog Security Signal {signal.id}",
-                "occurred": (
-                    str(signal.timestamp)
-                    if signal.timestamp
-                    else to_datetime.isoformat()
-                ),
+                "occurred": (str(signal.timestamp) if signal.timestamp else to_datetime.isoformat()),
                 "details": signal.message,
                 "severity": map_severity_to_xsoar(signal.severity),
                 "dbotMirrorId": signal.id,
@@ -2118,16 +2045,8 @@ def main() -> None:
         # Handle credentials type (type 9) - extract password from dict
         api_key_creds = params.get("api_key", {})
         app_key_creds = params.get("app_key", {})
-        configuration.api_key["apiKeyAuth"] = (
-            api_key_creds.get("password")
-            if isinstance(api_key_creds, dict)
-            else api_key_creds
-        )
-        configuration.api_key["appKeyAuth"] = (
-            app_key_creds.get("password")
-            if isinstance(app_key_creds, dict)
-            else app_key_creds
-        )
+        configuration.api_key["apiKeyAuth"] = api_key_creds.get("password") if isinstance(api_key_creds, dict) else api_key_creds
+        configuration.api_key["appKeyAuth"] = app_key_creds.get("password") if isinstance(app_key_creds, dict) else app_key_creds
         configuration.server_variables["site"] = SITE
         configuration.verify_ssl = not params.get("insecure", False)
 

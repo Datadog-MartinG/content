@@ -158,6 +158,21 @@ script:
           description: The raw signal object returned by the API.
           type: Unknown
     - arguments:
+        - description: The unique identifier of the security signal to retrieve investigation for. If not provided, will attempt to get it from the current incident.
+          name: signal_id
+      name: datadog-signal-investigation-get
+      description: Get the BitsAI investigation of a security signal from Datadog Cloud SIEM, if it exists. Returns the investigation verdict and detailed steps.
+      outputs:
+        - contextPath: Datadog.SecurityInvestigation.signal_id
+          description: The unique identifier of the security signal associated with this investigation.
+          type: String
+        - contextPath: Datadog.SecurityInvestigation.verdict
+          description: The overall verdict of the investigation (e.g., malicious, benign, suspicious).
+          type: String
+        - contextPath: Datadog.SecurityInvestigation.steps
+          description: List of investigation steps performed by BitsAI.
+          type: Unknown
+    - arguments:
         - description: Filter signals by state (open, under_review, archived).
           name: state
           auto: PREDEFINED

@@ -88,6 +88,9 @@ INTEGRATION_CONTEXT_NAME = "Datadog"
 SECURITY_SIGNAL_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecuritySignal"
 SECURITY_RULE_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecurityRule"
 SECURITY_COMMENT_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecurityComment"
+SECURITY_INVESTIGATION_CONTEXT_NAME = (
+    f"{INTEGRATION_CONTEXT_NAME}.SecurityInvestigation"
+)
 LOG_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.Log"
 NO_RESULTS_FROM_API_MSG = "API didn't return any results for given search parameters."
 ERROR_MSG = "Something went wrong!\n"
@@ -95,6 +98,70 @@ AUTHENTICATION_ERROR_MSG = "Authentication Error: Invalid API Key. Make sure API
 
 
 """ DATACLASSES """
+
+
+@dataclass
+class InvestigationStep:
+    name: str
+    verdict: str
+    summary: str
+
+    def to_display_dict(self) -> dict[str, Any]:
+        """
+        Convert an InvestigationStep to a dictionary optimized for human-readable display.
+
+        Returns:
+            Dict[str, Any]: Dictionary with display-friendly field names and values.
+        """
+        return {
+            "Name": self.name,
+            "Verdict": self.verdict,
+            "Summary": self.summary,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Convert an InvestigationStep to a plain dictionary for XSOAR context output.
+
+        Returns:
+            Dict[str, Any]: Dictionary for context output.
+        """
+        return {
+            "name": self.name,
+            "verdict": self.verdict,
+            "summary": self.summary,
+        }
+
+
+@dataclass
+class Investigation:
+    verdict: str
+    steps: list[InvestigationStep]
+
+    def to_display_dict(self) -> dict[str, Any]:
+        """
+        Convert an Investigation to a dictionary optimized for human-readable display.
+
+        Returns:
+            Dict[str, Any]: Dictionary with display-friendly field names and values.
+        """
+        return {
+            "Verdict": self.verdict,
+            "Steps Count": len(self.steps),
+            "Steps": [step.to_display_dict() for step in self.steps],
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Convert an Investigation to a plain dictionary for XSOAR context output.
+
+        Returns:
+            Dict[str, Any]: Dictionary for context output.
+        """
+        return {
+            "verdict": self.verdict,
+            "steps": [step.to_dict() for step in self.steps],
+        }
 
 
 @dataclass
@@ -226,7 +293,11 @@ class SecurityRule:
             "Type": self.type,
             "Is Enabled": self.is_enabled,
             "Created At": self.created_at,
-            "Tags": (", ".join(self.tags[:5]) + ("..." if len(self.tags) > 5 else "") if self.tags else None),
+            "Tags": (
+                ", ".join(self.tags[:5]) + ("..." if len(self.tags) > 5 else "")
+                if self.tags
+                else None
+            ),
             "URL": self.build_url(),
         }
 
@@ -290,12 +361,20 @@ class Log:
         """
         return {
             "Timestamp": str(self.timestamp) if self.timestamp else None,
-            "Message": (self.message[:100] + "..." if self.message and len(self.message) > 100 else self.message),
+            "Message": (
+                self.message[:100] + "..."
+                if self.message and len(self.message) > 100
+                else self.message
+            ),
             "Service": self.service,
             "Host": self.host,
             "Source": self.source,
             "Status": self.status,
-            "Tags": (", ".join(self.tags[:3]) + ("..." if len(self.tags) > 3 else "") if self.tags else None),
+            "Tags": (
+                ", ".join(self.tags[:3]) + ("..." if len(self.tags) > 3 else "")
+                if self.tags
+                else None
+            ),
             "URL": self.build_url(),
         }
 
@@ -369,12 +448,26 @@ class SecuritySignal:
             "Message": self.message,
             "Severity": self.severity,
             "State": self.triage.state if self.triage else None,
-            "Rule URL": (SecurityRule(id=self.rule_id, name="", type="", is_enabled=False).build_url() if self.rule_id else None),
+            "Rule URL": (
+                SecurityRule(
+                    id=self.rule_id, name="", type="", is_enabled=False
+                ).build_url()
+                if self.rule_id
+                else None
+            ),
             "Host": self.host,
             "Services": self.service,
             "Timestamp": str(self.timestamp) if self.timestamp else None,
-            "Assignee": (self.triage.assignee.name if (self.triage and self.triage.assignee) else None),
-            "Tags": (", ".join(self.tags[:5]) + ("..." if len(self.tags) > 5 else "") if self.tags else None),
+            "Assignee": (
+                self.triage.assignee.name
+                if (self.triage and self.triage.assignee)
+                else None
+            ),
+            "Tags": (
+                ", ".join(self.tags[:5]) + ("..." if len(self.tags) > 5 else "")
+                if self.tags
+                else None
+            ),
             "URL": self.build_url(),
         }
         return remove_none_values(result)
@@ -409,7 +502,9 @@ class SecuritySignal:
         if self.rule_id:
             result["rule"] = {
                 "id": self.rule_id,
-                "url": SecurityRule(id=self.rule_id, name="", type="", is_enabled=False).build_url(),
+                "url": SecurityRule(
+                    id=self.rule_id, name="", type="", is_enabled=False
+                ).build_url(),
             }
 
         # Convert triage to dict if present
@@ -608,6 +703,48 @@ def parse_security_comment(data: dict[str, Any]) -> Comment:
     )
 
 
+def parse_security_investigation(data: dict[str, Any]) -> Investigation:
+    """
+    Parse raw security investigation data from the Datadog API into a structured Investigation object.
+
+    Extracts the investigation verdict and individual investigation steps from the nested
+    API response structure.
+
+    Args:
+        data (Dict[str, Any]): Raw investigation data from the Datadog API response.
+                              Expected to contain 'attributes' with 'verdict' and 'steps' fields.
+
+    Returns:
+        Investigation: Structured dataclass containing the investigation verdict and
+                      a list of InvestigationStep objects.
+
+    Example:
+        >>> api_data = {
+        ...     "attributes": {
+        ...         "verdict": "malicious",
+        ...         "steps": [{"name": "Check IP", "verdict": "suspicious", "summary": "IP flagged"}]
+        ...     }
+        ... }
+        >>> investigation = parse_security_investigation(api_data)
+        >>> investigation.verdict
+        "malicious"
+    """
+    attrs = data.get("attributes", {})
+    verdict = attrs.get("verdict", "")
+    raw_steps = attrs.get("steps", [])
+
+    steps = [
+        InvestigationStep(
+            name=step.get("name", ""),
+            verdict=step.get("verdict", ""),
+            summary=step.get("summary", ""),
+        )
+        for step in raw_steps
+    ]
+
+    return Investigation(verdict=verdict, steps=steps)
+
+
 def parse_security_signal(data: dict[str, Any]) -> SecuritySignal:
     """
     Parse raw security signal data from the Datadog API and convert it into a structured SecuritySignal object.
@@ -756,7 +893,9 @@ def parse_log(data: dict[str, Any]) -> Log:
     timestamp = None
     if attrs.get("timestamp"):
         try:
-            timestamp = datetime.fromisoformat(attrs.get("timestamp", "").replace("Z", "+00:00"))
+            timestamp = datetime.fromisoformat(
+                attrs.get("timestamp", "").replace("Z", "+00:00")
+            )
         except (ValueError, AttributeError):
             # Keep as string if parsing fails
             timestamp = None
@@ -974,6 +1113,96 @@ def module_test(configuration: Configuration) -> str:
         return "ok"
 
 
+def get_security_signal_investigation_command(
+    configuration: Configuration,
+    args: dict[str, Any],
+) -> CommandResults:
+    """
+    Get the BitsAI investigation of a security signal, if it exists.
+
+    Args:
+        configuration: Datadog API configuration
+        args: Command arguments containing:
+            - signal_id (str, optional): The ID of the signal to retrieve investigation for;
+              falls back to the incident signal ID if not provided.
+
+    Returns:
+        CommandResults: XSOAR command results with investigation data
+
+    Raises:
+        DemistoException: If signal_id is not provided or API call fails
+    """
+    signal_id = args.get("signal_id")
+
+    # If signal_id not provided, try to get it from the current incident
+    if not signal_id:
+        incident = demisto.incident()
+        signal_id = incident.get("CustomFields", {}).get("datadogsecuritysignalid")
+        if not signal_id:
+            raise DemistoException(
+                "signal_id is required. Provide it as an argument or run from an incident with a Datadog Security Signal ID."
+            )
+
+    try:
+        # This is not exposed by the Datadog API client, but still accessible via API tokens
+        # Uses the unstable API endpoint for security monitoring investigations
+        investigation_response = requests.get(
+            f"https://app.{SITE}/api/unstable/security_monitoring/investigations/{signal_id}",
+            headers={
+                "dd-api-key": configuration.api_key["apiKeyAuth"],
+                "dd-application-key": configuration.api_key["appKeyAuth"],
+                "Content-Type": "application/json",
+            },
+        )
+
+        if not investigation_response.ok:
+            raise DemistoException(
+                f"API request failed with status {investigation_response.status_code}: {investigation_response.text}"
+            )
+
+        response_json = investigation_response.json()
+        data = response_json.get("data", {})
+
+        if not data:
+            readable_output = f"No investigation found for security signal: {signal_id}"
+            return CommandResults(
+                readable_output=readable_output,
+                outputs_prefix=SECURITY_INVESTIGATION_CONTEXT_NAME,
+                outputs_key_field="signal_id",
+                outputs={},
+            )
+
+        # Parse the investigation data
+        investigation = parse_security_investigation(data)
+
+        # Prepare outputs
+        output = investigation.to_dict()
+        output["signal_id"] = signal_id  # Add signal_id to context
+
+        # Create readable output with investigation verdict and steps
+        readable_output = f"## Security Signal Investigation\n\n"
+        readable_output += f"**Signal ID:** {signal_id}\n"
+        readable_output += f"**Verdict:** {investigation.verdict}\n"
+        readable_output += f"**Steps:** {len(investigation.steps)}\n\n"
+
+        # Add detailed steps table
+        if investigation.steps:
+            steps_display = [step.to_display_dict() for step in investigation.steps]
+            readable_output += lookup_to_markdown(steps_display, "Investigation Steps")
+
+        return CommandResults(
+            readable_output=readable_output,
+            outputs_prefix=SECURITY_INVESTIGATION_CONTEXT_NAME,
+            outputs_key_field="signal_id",
+            outputs=output,
+        )
+
+    except Exception as e:
+        raise DemistoException(
+            f"Failed to get security signal investigation for signal {signal_id}: {str(e)}"
+        )
+
+
 def get_security_signal_command(
     configuration: Configuration,
     args: dict[str, Any],
@@ -1006,7 +1235,9 @@ def get_security_signal_command(
     try:
         with ApiClient(configuration) as api_client:
             api_instance = SecurityMonitoringApi(api_client)
-            signal_response = api_instance.get_security_monitoring_signal(signal_id=signal_id)
+            signal_response = api_instance.get_security_monitoring_signal(
+                signal_id=signal_id
+            )
             results = signal_response.to_dict()
             data = results.get("data", {})
 
@@ -1024,7 +1255,9 @@ def get_security_signal_command(
             # Create human-readable summary using the display dictionary
             signal_display = signal.to_display_dict()
 
-            readable_output = lookup_to_markdown([signal_display], "Security Signal Details")
+            readable_output = lookup_to_markdown(
+                [signal_display], "Security Signal Details"
+            )
 
             return CommandResults(
                 readable_output=readable_output,
@@ -1213,7 +1446,9 @@ def get_security_rule_command(
             # Create human-readable summary using the display dictionary
             rule_display = rule.to_display_dict()
 
-            readable_output = lookup_to_markdown([rule_display], "Security Rule Details")
+            readable_output = lookup_to_markdown(
+                [rule_display], "Security Rule Details"
+            )
 
             return CommandResults(
                 readable_output=readable_output,
@@ -1264,7 +1499,9 @@ def get_security_signal_list_command(
             from_datetime = parse(from_date, settings={"TIMEZONE": "UTC"})
             to_datetime = parse(to_date, settings={"TIMEZONE": "UTC"})
         except Exception as e:
-            raise DemistoException(f"Invalid date format. Use formats like '7 days ago', '2023-01-01T00:00:00Z': {str(e)}")
+            raise DemistoException(
+                f"Invalid date format. Use formats like '7 days ago', '2023-01-01T00:00:00Z': {str(e)}"
+            )
 
         # Use helper function to fetch signals
         signals_objs = fetch_security_signals(
@@ -1277,7 +1514,9 @@ def get_security_signal_list_command(
         )
 
         if not signals_objs:
-            readable_output = "No security signals found matching the specified criteria."
+            readable_output = (
+                "No security signals found matching the specified criteria."
+            )
             return CommandResults(
                 readable_output=readable_output,
                 outputs_prefix=SECURITY_SIGNAL_CONTEXT_NAME,
@@ -1294,7 +1533,9 @@ def get_security_signal_list_command(
             display_data.append(signal.to_display_dict())
 
         # Create human-readable output
-        readable_output = lookup_to_markdown(display_data, f"Security Signals ({len(signals)} results)")
+        readable_output = lookup_to_markdown(
+            display_data, f"Security Signals ({len(signals)} results)"
+        )
 
         return CommandResults(
             readable_output=readable_output,
@@ -1355,7 +1596,9 @@ def update_security_signal_command(
     if state is not None:
         valid_states = ["open", "under_review", "archived"]
         if state not in valid_states:
-            raise DemistoException(f"Invalid state '{state}'. Valid states are: {', '.join(valid_states)}")
+            raise DemistoException(
+                f"Invalid state '{state}'. Valid states are: {', '.join(valid_states)}"
+            )
 
     try:
         with ApiClient(configuration) as api_client:
@@ -1373,17 +1616,25 @@ def update_security_signal_command(
                     )
                     users = res.get("data", [])
                     if len(users) == 0:
-                        raise DemistoException(f"Could not determine any user for name or email: {assignee}")
+                        raise DemistoException(
+                            f"Could not determine any user for name or email: {assignee}"
+                        )
                     if len(users) > 1:
-                        users = {u.get("attributes", {}).get("email", "") for u in users}
-                        raise DemistoException(f"Could not determine the user to assign to from list: {users}")
+                        users = {
+                            u.get("attributes", {}).get("email", "") for u in users
+                        }
+                        raise DemistoException(
+                            f"Could not determine the user to assign to from list: {users}"
+                        )
                     assignee_uuid = users[0].get("id")
 
                 # Always update assignee - either with found assignee_uuid or by unassigning
                 assignee_body = SecurityMonitoringSignalAssigneeUpdateRequest(
                     data=SecurityMonitoringSignalAssigneeUpdateData(
                         attributes=SecurityMonitoringSignalAssigneeUpdateAttributes(
-                            assignee=SecurityMonitoringTriageUser(uuid=assignee_uuid or ""),
+                            assignee=SecurityMonitoringTriageUser(
+                                uuid=assignee_uuid or ""
+                            ),
                         ),
                     ),
                 )
@@ -1465,7 +1716,9 @@ def add_security_signal_comment_command(
         )
 
         if not comments_response.ok:
-            raise DemistoException(f"API request failed with status {comments_response.status_code}: {comments_response.text}")
+            raise DemistoException(
+                f"API request failed with status {comments_response.status_code}: {comments_response.text}"
+            )
 
         data = comments_response.json().get("data", {})
         comment_obj = parse_security_comment(data)
@@ -1474,7 +1727,9 @@ def add_security_signal_comment_command(
         with ApiClient(configuration) as api_client:
             user_api_instance = UsersApi(api_client)
             try:
-                user_response = user_api_instance.get_user(user_id=comment_obj.user_uuid)
+                user_response = user_api_instance.get_user(
+                    user_id=comment_obj.user_uuid
+                )
                 user_data = user_response.to_dict().get("data", {})
                 attrs = user_data.get("attributes", {})
                 comment_obj.user_name = attrs.get("name")
@@ -1486,7 +1741,9 @@ def add_security_signal_comment_command(
         display_data = comment_obj.to_display_dict()
         output = comment_obj.to_dict()
 
-        readable_output = lookup_to_markdown([display_data], "Comment Added Successfully")
+        readable_output = lookup_to_markdown(
+            [display_data], "Comment Added Successfully"
+        )
 
         return CommandResults(
             readable_output=readable_output,
@@ -1573,7 +1830,9 @@ def list_security_signal_comments_command(
         display_data = [c.to_display_dict() for c in comments]
         outputs = [c.to_dict() for c in comments]
 
-        readable_output = lookup_to_markdown(display_data, f"Security Signal Comments ({len(comments)} results)")
+        readable_output = lookup_to_markdown(
+            display_data, f"Security Signal Comments ({len(comments)} results)"
+        )
 
         return CommandResults(
             readable_output=readable_output,
@@ -1615,7 +1874,9 @@ def logs_query_command(
         # If no query provided, try to get it from incident's rule
         if not has_query:
             incident = demisto.incident()
-            rule_id = incident.get("CustomFields", {}).get("datadogsecuritysignalruleid")
+            rule_id = incident.get("CustomFields", {}).get(
+                "datadogsecuritysignalruleid"
+            )
 
             if not rule_id:
                 raise DemistoException(
@@ -1625,7 +1886,9 @@ def logs_query_command(
             # Fetch the rule and extract the query
             with ApiClient(configuration) as api_client:
                 api_instance = SecurityMonitoringApi(api_client)
-                rule_response = api_instance.get_security_monitoring_rule(rule_id=rule_id)
+                rule_response = api_instance.get_security_monitoring_rule(
+                    rule_id=rule_id
+                )
                 rule_data = rule_response.to_dict()
                 rule = parse_security_rule(rule_data)
 
@@ -1639,7 +1902,11 @@ def logs_query_command(
         if sort not in ["asc", "desc"]:
             raise DemistoException("Sort must be either 'asc' or 'desc'")
 
-        sort_order = LogsSort.TIMESTAMP_ASCENDING if sort == "asc" else LogsSort.TIMESTAMP_DESCENDING
+        sort_order = (
+            LogsSort.TIMESTAMP_ASCENDING
+            if sort == "asc"
+            else LogsSort.TIMESTAMP_DESCENDING
+        )
 
         search_query = args.get("query", "*")
 
@@ -1651,7 +1918,9 @@ def logs_query_command(
             from_datetime = parse(from_date, settings={"TIMEZONE": "UTC"})
             to_datetime = parse(to_date, settings={"TIMEZONE": "UTC"})
         except Exception as e:
-            raise DemistoException(f"Invalid date format. Use formats like '7 days ago', '2023-01-01T00:00:00Z': {str(e)}")
+            raise DemistoException(
+                f"Invalid date format. Use formats like '7 days ago', '2023-01-01T00:00:00Z': {str(e)}"
+            )
 
         with ApiClient(configuration) as api_client:
             logs_api_instance = LogsApi(api_client)
@@ -1795,7 +2064,11 @@ def fetch_incidents(
 
             incident = {
                 "name": signal.title or f"Datadog Security Signal {signal.id}",
-                "occurred": (str(signal.timestamp) if signal.timestamp else to_datetime.isoformat()),
+                "occurred": (
+                    str(signal.timestamp)
+                    if signal.timestamp
+                    else to_datetime.isoformat()
+                ),
                 "details": signal.message,
                 "severity": map_severity_to_xsoar(signal.severity),
                 "dbotMirrorId": signal.id,
@@ -1845,8 +2118,16 @@ def main() -> None:
         # Handle credentials type (type 9) - extract password from dict
         api_key_creds = params.get("api_key", {})
         app_key_creds = params.get("app_key", {})
-        configuration.api_key["apiKeyAuth"] = api_key_creds.get("password") if isinstance(api_key_creds, dict) else api_key_creds
-        configuration.api_key["appKeyAuth"] = app_key_creds.get("password") if isinstance(app_key_creds, dict) else app_key_creds
+        configuration.api_key["apiKeyAuth"] = (
+            api_key_creds.get("password")
+            if isinstance(api_key_creds, dict)
+            else api_key_creds
+        )
+        configuration.api_key["appKeyAuth"] = (
+            app_key_creds.get("password")
+            if isinstance(app_key_creds, dict)
+            else app_key_creds
+        )
         configuration.server_variables["site"] = SITE
         configuration.verify_ssl = not params.get("insecure", False)
 
@@ -1855,6 +2136,7 @@ def main() -> None:
             configuration.proxy = proxies.get("https") or proxies.get("http")
 
         commands = {
+            "datadog-signal-investigation-get": get_security_signal_investigation_command,
             "datadog-signal-get": get_security_signal_command,
             "datadog-signal-list": get_security_signal_list_command,
             "datadog-signal-update": update_security_signal_command,
@@ -1884,3 +2166,56 @@ def main() -> None:
 
 if __name__ in ("__main__", "__builtin__", "builtins"):
     main()
+
+"""
+BITS AI CORE:
+
+eval "$(dd-auth -s dd.datad0g.com --output | sed 's/^/export /')"
+curl -s "https://dd.datad0g.com/api/unstable/security_monitoring/investigations" \
+-d 'page[limit]=2' \
+-H "dd-api-key: ${DD_API_KEY}" \
+-H "dd-application-key: ${DD_APP_KEY}" | jq
+
+returns a 500s on staging
+
+
+eval $(dd-auth --output)
+curl -s "https://app.datadoghq.com/api/unstable/security_monitoring/investigations" \
+-H "dd-api-key: ${DD_API_KEY}" \
+-H "dd-application-key: ${DD_APP_KEY}" | jq
+
+is able to list some investigation on prod.
+{
+      "id": "AQAAAZotvUguxPjcuAAAAABBWm90dlVndUFBQk4yUHNNWVo4b1VnQUE",
+      "type": "investigation_response",
+      "attributes": {
+        "steps": [...]
+    ...
+
+    
+Different output response format:
+
+curl -s "https://app.datadoghq.com/api/unstable/security_monitoring/investigations/AQAAAZotvUguxPjcuAAAAABBWm90dlVndUFBQk4yUHNNWVo4b1VnQUE" \
+-H "dd-api-key: ${DD_API_KEY}" \
+-H "dd-application-key: ${DD_APP_KEY}" | jq
+
+> light response, without all the investigation details
+
+
+curl -s -X POST "https://app.datadoghq.com/api/unstable/security_monitoring/investigations" \
+--data-raw '{"data":{"type":"siem_investigation_agent","attributes":{"signal_id":"AQAAAZotvUguxPjcuAAAAABBWm90dlVndUFBQk4yUHNNWVo4b1VnQUE"}}, }' \
+-H "dd-api-key: ${DD_API_KEY}" \
+-H "dd-application-key: ${DD_APP_KEY}" | jq
+
+> rich response with the full investigation details + the documentation does not clarify if this is doing a 
+simple fetch or rerunning the entire investigation
+
+
+curl -X POST 'https://app.datadoghq.com/api/v2/security_monitoring/signals/investigation' \
+  -b '_dd_did=07ad9b15-f40c-4a3e-8d63-82dd11fa675b; _dd_device_id=9etc9ri27p; datadog-theme=light; intercom-device-id-x9u0q6k2=9c9b1aab-60ad-4a45-a7f4-65a4393dc309; redirector-token=Eb1TdvGx5FtoeXYKx/RJ5e7kt8QRV06TV3uZ6N42mhM=; _dd_device_id=9etc9ri27p; dogweb=812f975888bed8e2baf223bc3669e3f7299e42b5e3f00833d9594e8f897006ca7cdd48e9; dogwebu=fb40a80e64770a72f6009cef860f9d0751fbb8f8; intercom-session-x9u0q6k2=d3pWR1pGNWs4aTljWVdiYjJLVERpc3BaUEtWNEkvQW44bFYzU21hMzBOc215ZkZrTG54TzdaZkJpQ2Y0M2Y3b1BDaGF5Tnc5ck42alRSbGVrOFpsSXVsWDQvbEh3bnhBRXVTM2ZWYUtFSjA9LS1LRlF3WWwyU2N0QlRWM1NzK0w4UmxRPT0=--2a9e2b659fa13e487970213d193781a12e20e69b; _dd_s=aid=69dc71bf-bde0-4b50-9c46-61cd4bacac8a&logs=1&id=ab0206a2-bbb5-427a-975f-0439b02f1811&created=1761736187304&expire=1761738945666&rum=1&c=0' \
+  -H 'x-csrf-token: ae076185ce7c8ea9e79a02ddc5c381d5af0bbc0c' \
+  --data-raw '{"data":{"type":"siem_investigation_agent","attributes":{"signal_id":"AQAAAZotvUguxPjcuAAAAABBWm90dlVndUFBQk4yUHNNWVo4b1VnQUE"}},"_authentication_token":"ae076185ce7c8ea9e79a02ddc5c381d5af0bbc0c"}'
+
+  
+  
+  """

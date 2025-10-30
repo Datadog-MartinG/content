@@ -323,7 +323,7 @@ class SecurityRule:
 @dataclass
 class Log:
     id: str
-    timestamp: datetime | None = None
+    timestamp: int | None = None
     message: str | None = None
     service: str | None = None
     host: str | None = None
@@ -397,7 +397,7 @@ class SecuritySignal:
     id: str
     event_id: str
     bits_investigator_verdict: str | None = None
-    timestamp: datetime | None = None
+    timestamp: int | None = None
     host: str | None = None
     service: str | None = None
     severity: str | None = None
@@ -439,7 +439,7 @@ class SecuritySignal:
             "Rule URL": (SecurityRule(id=self.rule_id, name="", type="", is_enabled=False).build_url() if self.rule_id else None),
             "Host": self.host,
             "Services": self.service,
-            "Timestamp": str(self.timestamp) if self.timestamp else None,
+            "Timestamp": parse(str(self.timestamp) or ""),
             "Assignee": (self.triage.assignee.name if (self.triage and self.triage.assignee) else None),
             "Tags": (", ".join(self.tags[:5]) + ("..." if len(self.tags) > 5 else "") if self.tags else None),
             "URL": self.build_url(),
@@ -796,7 +796,7 @@ def parse_security_signal(data: dict[str, Any]) -> SecuritySignal:
         id=signal_id,
         event_id=event_id,
         bits_investigator_verdict=bits_investigator.get("state"),
-        timestamp=attrs.get("timestamp"),
+        timestamp=parse(attrs.get("timestamp", "")).timestamp(),  # type: ignore
         host=attrs.get("host"),
         service=service_str,
         severity=attrs.get("status", "info"),
@@ -865,13 +865,7 @@ def parse_log(data: dict[str, Any]) -> Log:
     attrs = data.get("attributes", {}) or {}
 
     # Parse timestamp if available
-    timestamp = None
-    if attrs.get("timestamp"):
-        try:
-            timestamp = datetime.fromisoformat(attrs.get("timestamp", "").replace("Z", "+00:00"))
-        except (ValueError, AttributeError):
-            # Keep as string if parsing fails
-            timestamp = None
+    timestamp = int(parse(attrs.get("timestamp", "")).timestamp())  # type: ignore
 
     # Extract tags - can be in different formats
     tags = attrs.get("tags", [])
@@ -1947,7 +1941,6 @@ def fetch_incidents(
         # Get last run to handle incremental fetch
         last_run = demisto.getLastRun()
         last_fetch_timestamp: int = last_run.get("last_fetch_timestamp", 0)  # type: ignore
-        existing_ids: list[str] = last_run.get("existing_ids", [])  # type: ignore
 
         # Calculate fetch time range
         if last_fetch_timestamp:
@@ -1985,14 +1978,8 @@ def fetch_incidents(
         # Convert signals to XSOAR incidents with deduplication
         incidents = []
         latest_signal_timestamp = last_fetch_timestamp or 0
-        new_ids = []
 
         for signal in signals:
-            # Skip if already fetched (deduplication)
-            if signal.id in existing_ids:
-                demisto.debug(f"Skipping duplicate signal: {signal.id}")
-                continue
-
             signal_dict = signal.to_dict()
             owner = signal_dict.get("triage", {}).get("assignee", {}).get("name", "")
             labels = []
@@ -2003,10 +1990,11 @@ def fetch_incidents(
 
             mirror_direction = params.get("mirror_direction", "None")
             mirror_instance = demisto.integrationInstance()
+            occured = datetime.fromtimestamp(signal.timestamp or 0).strftime("%Y-%m-%dT%H:%M:%SZ")
 
             incident = {
                 "name": signal.title or f"Datadog Security Signal {signal.id}",
-                "occurred": (str(signal.timestamp) if signal.timestamp else to_datetime.isoformat()),
+                "occurred": occured,
                 "details": signal.message,
                 "severity": map_severity_to_xsoar(signal.severity),
                 "dbotMirrorId": signal.id,
@@ -2018,31 +2006,20 @@ def fetch_incidents(
             }
 
             incidents.append(incident)
-            new_ids.append(signal.id)
 
-            # Track latest signal timestamp for next fetch (convert to milliseconds)
             if signal.timestamp:
-                signal_timestamp_ms = int(signal.timestamp.timestamp() * 1000)
-                if signal_timestamp_ms > latest_signal_timestamp:
-                    latest_signal_timestamp = signal_timestamp_ms
+                if signal.timestamp > latest_signal_timestamp:
+                    latest_signal_timestamp = signal.timestamp
 
         demisto.debug(f"Created {len(incidents)} incidents (skipped {len(signals) - len(incidents)} duplicates)")
 
-        # Update last run with latest timestamp and IDs (keep last 1000 IDs to prevent memory issues)
-        all_ids = list(set(existing_ids + new_ids))[-1000:]
-
         if incidents and latest_signal_timestamp:
-            demisto.setLastRun(
-                {
-                    "last_fetch_timestamp": latest_signal_timestamp,
-                    "existing_ids": all_ids,
-                }
-            )
+            demisto.setLastRun({"last_fetch_timestamp": latest_signal_timestamp})
             demisto.debug(f"Updated last_fetch_timestamp to: {latest_signal_timestamp}")
         elif not last_fetch_timestamp:
             # First run with no incidents - still save the from_datetime as timestamp
-            first_run_timestamp = int(from_datetime.timestamp() * 1000)  # type: ignore
-            demisto.setLastRun({"last_fetch_timestamp": first_run_timestamp, "existing_ids": all_ids})
+            first_run_timestamp = int(from_datetime.timestamp())  # type: ignore
+            demisto.setLastRun({"last_fetch_timestamp": first_run_timestamp})
 
         # Send incidents to XSOAR
         demisto.incidents(incidents)

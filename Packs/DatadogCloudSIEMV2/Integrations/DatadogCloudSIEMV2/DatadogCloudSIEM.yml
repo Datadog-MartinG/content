@@ -543,6 +543,33 @@ script:
         - contextPath: Datadog.Log.raw
           description: The raw log object returned by the API.
           type: Unknown
+    - name: datadog-security-filter-get
+      description: List all security filters from Datadog Cloud SIEM V2. Security filters control which logs are indexed and analyzed by the Cloud SIEM platform.
+      outputs:
+        - contextPath: Datadog.SecurityFilter.id
+          description: The unique identifier of the security filter.
+          type: String
+        - contextPath: Datadog.SecurityFilter.name
+          description: The name of the security filter.
+          type: String
+        - contextPath: Datadog.SecurityFilter.filteredDataType
+          description: The type of data being filtered (e.g., logs).
+          type: String
+        - contextPath: Datadog.SecurityFilter.enabled
+          description: Whether the security filter is enabled.
+          type: Boolean
+        - contextPath: Datadog.SecurityFilter.builtin
+          description: Whether the security filter is a built-in filter.
+          type: Boolean
+        - contextPath: Datadog.SecurityFilter.query
+          description: The query used by the security filter.
+          type: String
+        - contextPath: Datadog.SecurityFilter.exclusionFilters
+          description: List of exclusion filters applied.
+          type: Unknown
+        - contextPath: Datadog.SecurityFilter.raw
+          description: The raw filter object returned by the API.
+          type: Unknown
   dockerimage: demisto/datadog-api-client:1.0.0.4893383
   isfetch: true
   runonce: false

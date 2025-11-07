@@ -76,6 +76,35 @@ from CommonServerUserPython import *  # noqa: F401
 # Disable insecure warnings
 disable_warnings()
 
+
+def parse_bool(v: Any) -> bool:
+    """
+    Convert various representations of truthy/falsey values into a boolean.
+
+    Examples:
+        parse_bool(True) -> True
+        parse_bool("true") -> True
+        parse_bool("No") -> False
+        parse_bool(0) -> False
+        parse_bool("1") -> True
+        parse_bool(None) -> False
+    """
+    if isinstance(v, bool):
+        return v
+    if v is None:
+        return False
+    if isinstance(v, (int, float)):
+        return v != 0
+    if isinstance(v, str):
+        s = v.strip().lower()
+        if s in {"true", "t", "yes", "y", "1", "on"}:
+            return True
+        if s in {"false", "f", "no", "n", "0", "off", ""}:
+            return False
+        raise ValueError(f"Cannot interpret string as boolean: {v!r}")
+    return bool(v)
+
+
 """ CONSTANTS """
 
 SITE = "datadoghq.com"
@@ -88,6 +117,8 @@ INTEGRATION_CONTEXT_NAME = "Datadog"
 SECURITY_SIGNAL_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecuritySignal"
 SECURITY_RULE_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecurityRule"
 SECURITY_COMMENT_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecurityComment"
+SECURITY_FILTER_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecurityFilter"
+SECURITY_SUPPRESSION_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecuritySuppression"
 LOG_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.Log"
 NO_RESULTS_FROM_API_MSG = "API didn't return any results for given search parameters."
 ERROR_MSG = "Something went wrong!\n"
@@ -156,33 +187,47 @@ class Comment:
         return remove_none_values(result)
 
 
-# {
-#     "data": {
-#         "id": "fpx-jxd-nhw",
-#         "type": "suppressions",
-#         "attributes": {
-#             "creation_date": 1736348669774,
-#             "creator": {
-#                 "handle": "waleed.sawan@datadoghq.com",
-#                 "name": "Waleed Sawan"
-#             },
-#             "data_exclusion_query": "source:cloudtrail account_id:12345",
-#             "description": "",
-#             "editable": true,
-#             "enabled": true,
-#             "name": "Testing workflows p2",
-#             "rule_query": "type:log_detection source:cloudtrail",
-#             "suppression_query": "",
-#             "tags": [],
-#             "update_date": 1762508997083,
-#             "updater": {
-#                 "handle": "mael.gaonach@datadoghq.com",
-#                 "name": "Maël Gaonach"
-#             },
-#             "version": 62
-#         }
-#     }
-# }
+@dataclass
+class SecurityFilter:
+    id: str
+    filtered_data_type: str
+    enabled: bool
+    builtin: bool
+    name: str
+    query: str
+    exclusion_filters: list[str] | None = None
+
+    # Raw filter data
+    raw: dict[str, Any] | None = None
+
+    def to_display_dict(self) -> dict[str, Any]:
+        return {
+            "Name": self.name,
+            "Enabled": self.enabled,
+            "Builtin": self.builtin,
+            "Filtered Data Type": self.filtered_data_type,
+            "Query": self.query,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Convert a SecurityFilter to a plain dictionary for XSOAR context output.
+
+        Returns:
+            Dict[str, Any]: Dictionary for context output.
+        """
+        result = {
+            "id": self.id,
+            "name": self.name,
+            "filteredDataType": self.filtered_data_type,
+            "enabled": self.enabled,
+            "builtin": self.builtin,
+            "query": self.query,
+            "exclusionFilters": self.exclusion_filters,
+            "raw": self.raw,
+        }
+
+        return remove_none_values(result)
 
 
 @dataclass
@@ -898,7 +943,7 @@ def parse_security_suppression(data: dict[str, Any]) -> SecuritySuppression:
         id=data.get("id", ""),
         name=attrs.get("name", ""),
         description=attrs.get("description", ""),
-        enabled=attrs.get("enabled", False),
+        enabled=parse_bool(attrs.get("enabled", False)),
         creation_at=datetime.fromtimestamp(int(attrs.get("creation_date", 0)) / 1_000),
         update_at=datetime.fromtimestamp(int(attrs.get("update_date", 0)) / 1_000),
         creator=creator,
@@ -906,6 +951,37 @@ def parse_security_suppression(data: dict[str, Any]) -> SecuritySuppression:
         data_exclusion_query=attrs.get("data_exclusion_query", ""),
         rule_query=attrs.get("rule_query", ""),
         suppression_query=attrs.get("suppression_query", ""),
+        raw=data,
+    )
+
+
+def parse_security_filter(data: dict[str, Any]) -> SecurityFilter:
+    """
+    Parse raw security filter data from the Datadog API into a structured SecurityFilter object.
+
+    Args:
+        data (Dict[str, Any]): Raw security filter data from the Datadog API response.
+                              Expected to contain 'id', 'type', and 'attributes' fields.
+
+    Returns:
+        SecurityFilter: Structured dataclass containing parsed filter information.
+
+    Example:
+        >>> api_data = {"id": "abc-123", "type": "security_filters", "attributes": {...}}
+        >>> filter = parse_security_filter(api_data)
+        >>> filter.id
+        "abc-123"
+    """
+    attrs = data.get("attributes", {})
+
+    return SecurityFilter(
+        id=data.get("id", ""),
+        name=attrs.get("name", ""),
+        filtered_data_type=attrs.get("filtered_data_type", "logs"),
+        enabled=parse_bool(attrs.get("is_enabled", False)),
+        builtin=parse_bool(attrs.get("is_builtin", False)),
+        query=attrs.get("query", ""),
+        exclusion_filters=attrs.get("exclusion_filters", []) or None,
         raw=data,
     )
 
@@ -1331,7 +1407,7 @@ def suppressions_list_command(
                 readable_output = f"No suppressions found affecting rule: {rule_id}"
                 return CommandResults(
                     readable_output=readable_output,
-                    outputs_prefix=f"{INTEGRATION_CONTEXT_NAME}.SecuritySuppression",
+                    outputs_prefix=SECURITY_SUPPRESSION_CONTEXT_NAME,
                     outputs_key_field="id",
                     outputs=[],
                 )
@@ -1352,7 +1428,7 @@ def suppressions_list_command(
 
             return CommandResults(
                 readable_output=readable_output,
-                outputs_prefix=f"{INTEGRATION_CONTEXT_NAME}.SecuritySuppression",
+                outputs_prefix=SECURITY_SUPPRESSION_CONTEXT_NAME,
                 outputs_key_field="id",
                 outputs=suppressions,
             )
@@ -1911,6 +1987,64 @@ def logs_query_command(
         raise DemistoException(f"Failed to search logs: {str(e)}")
 
 
+def get_security_filter_command(
+    configuration: Configuration,
+    args: dict[str, Any],
+) -> CommandResults:
+    """
+    List all security filters from Datadog Cloud SIEM V2.
+
+    Security filters allow you to control which logs are indexed and analyzed
+    by the Cloud SIEM platform.
+
+    Args:
+        configuration: Datadog API configuration
+        args: Command arguments (currently unused)
+
+    Returns:
+        CommandResults: XSOAR command results with list of security filters
+
+    Raises:
+        DemistoException: If API call fails
+    """
+    try:
+        with ApiClient(configuration) as api_client:
+            api_instance = SecurityMonitoringApi(api_client)
+            filters_response = api_instance.list_security_filters()
+            filters_data = filters_response.to_dict().get("data", [])
+
+            if not filters_data:
+                readable_output = "No security filters found."
+                return CommandResults(
+                    readable_output=readable_output,
+                    outputs_prefix=SECURITY_FILTER_CONTEXT_NAME,
+                    outputs_key_field="id",
+                    outputs=[],
+                )
+
+            # Parse filters
+            filters = []
+            display_data = []
+
+            for filter_data in filters_data:
+                security_filter = parse_security_filter(filter_data)
+                filters.append(security_filter.to_dict())
+                display_data.append(security_filter.to_display_dict())
+
+            # Create human-readable summary using the display dictionary
+            readable_output = lookup_to_markdown(display_data, f"Security Filters ({len(filters)} results)")
+
+            return CommandResults(
+                readable_output=readable_output,
+                outputs_prefix=SECURITY_FILTER_CONTEXT_NAME,
+                outputs_key_field="id",
+                outputs=filters,
+            )
+
+    except Exception as e:
+        raise DemistoException(f"Failed to get security filters: {str(e)}")
+
+
 def fetch_incidents(
     configuration: Configuration,
     params: dict,
@@ -2063,6 +2197,7 @@ def main() -> None:
             "datadog-logs-query": logs_query_command,
             # New commands
             "datadog-rule-suppression-list": suppressions_list_command,
+            "datadog-security-filter-get": get_security_filter_command,
             # datadog-security-filter-get
             # datadog-security-filter-list
             # datadog-signal-notification-rule-get

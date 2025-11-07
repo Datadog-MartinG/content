@@ -1960,6 +1960,15 @@ def main() -> None:
             "datadog-rule-unsuppress": unsuppress_rule_command,
             "datadog-rule-get": get_security_rule_command,
             "datadog-logs-query": logs_query_command,
+            # New commands
+            # datadog-rule-suppression-list
+            # datadog-security-filter-get
+            # datadog-security-filter-list
+            # datadog-signal-notification-rule-get
+            # datadog-signal-notification-rule-list
+            # datadog-vulnerability-notification-rule-list
+            # datadog-vulnerability-notification-rule-list
+            # datadog-risk-scores-notification-rule-list
         }
         if command == "test-module":
             return_results(module_test(configuration))

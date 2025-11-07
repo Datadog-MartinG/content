@@ -119,6 +119,7 @@ SECURITY_RULE_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecurityRule"
 SECURITY_COMMENT_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecurityComment"
 SECURITY_FILTER_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecurityFilter"
 SECURITY_SUPPRESSION_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecuritySuppression"
+SECURITY_NOTIFICATION_RULE_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.SecurityNotificationRule"
 LOG_CONTEXT_NAME = f"{INTEGRATION_CONTEXT_NAME}.Log"
 NO_RESULTS_FROM_API_MSG = "API didn't return any results for given search parameters."
 ERROR_MSG = "Something went wrong!\n"
@@ -185,6 +186,47 @@ class Comment:
             }
 
         return remove_none_values(result)
+
+
+#   {
+#     "id": "skk-vie-xje",
+#     "type": "notification_rules",
+#     "attributes": {
+#       "created_at": 1646313236860,
+#       "created_by": {
+#         "name": "Eric Allard",
+#         "handle": "eric.allard@datadoghq.com"
+#       },
+#       "enabled": true,
+#       "modified_at": 1727341553210,
+#       "modified_by": {
+#         "name": "Lo\u00efc Taloc",
+#         "handle": "loic.taloc@datadoghq.com"
+#       },
+#       "name": "Application security default",
+#       "selectors": {
+#         "severities": [
+#           "medium",
+#           "high",
+#           "critical"
+#         ],
+#         "rule_types": [
+#           "application_security"
+#         ],
+#         "query": "",
+#         "trigger_source": "security_signals"
+#       },
+#       "targets": [
+#         "@eric.allard@datadoghq.com"
+#       ],
+#       "time_aggregation": 0,
+#       "version": 18
+#     }
+#   },
+
+@dataclass
+class SecurityNotificationRule:
+    pass
 
 
 @dataclass
@@ -1987,7 +2029,7 @@ def logs_query_command(
         raise DemistoException(f"Failed to search logs: {str(e)}")
 
 
-def get_security_filter_command(
+def list_security_filter_command(
     configuration: Configuration,
     args: dict[str, Any],
 ) -> CommandResults:
@@ -2043,6 +2085,54 @@ def get_security_filter_command(
 
     except Exception as e:
         raise DemistoException(f"Failed to get security filters: {str(e)}")
+
+
+def list_signal_notification_rule(
+    configuration: Configuration,
+    args: dict[str, Any],
+) -> CommandResults:
+    """
+    List all signal notification rules
+
+    Args:
+        configuration: Datadog API configuration
+        args: Command arguments (currently unused)
+
+    Returns:
+        CommandResults: XSOAR command results with list of signal notification rules
+
+    Raises:
+        DemistoException: If API call fails
+    """
+    try:
+        with ApiClient(configuration) as api_client:
+            api_instance = SecurityMonitoringApi(api_client)
+            notification_rules_response = api_instance.get_signal_notification_rules()
+            notification_rules_data = notification_rules_response.get("data", [])
+
+            if not notification_rules_data:
+                readable_output = "No signal notification rules found."
+                return CommandResults(
+                    readable_output=readable_output,
+                    outputs_prefix=f"{INTEGRATION_CONTEXT_NAME}.SignalNotificationRule",
+                    outputs_key_field="id",
+                    outputs=[],
+                )
+
+            # TODO: Parse notification rules with a dedicated parser function
+            # For now, return raw data
+            readable_output = f"Found {len(notification_rules_data)} signal notification rule(s).\n\n"
+            readable_output += f"Raw data:\n```json\n{json.dumps(notification_rules_data, indent=2)}\n```"
+
+            return CommandResults(
+                readable_output=readable_output,
+                outputs_prefix=f"{INTEGRATION_CONTEXT_NAME}.SignalNotificationRule",
+                outputs_key_field="id",
+                outputs=notification_rules_data,
+            )
+
+    except Exception as e:
+        raise DemistoException(f"Failed to get signal notification rules: {str(e)}")
 
 
 def fetch_incidents(
@@ -2195,16 +2285,11 @@ def main() -> None:
             "datadog-rule-unsuppress": unsuppress_rule_command,
             "datadog-rule-get": get_security_rule_command,
             "datadog-logs-query": logs_query_command,
-            # New commands
             "datadog-rule-suppression-list": suppressions_list_command,
-            "datadog-security-filter-get": get_security_filter_command,
-            # datadog-security-filter-get
-            # datadog-security-filter-list
-            # datadog-signal-notification-rule-get
-            # datadog-signal-notification-rule-list
+            "datadog-security-filter-list": list_security_filter_command,
+            "datadog-signal-notification-rule-list": list_signal_notification_rule,
             # datadog-vulnerability-notification-rule-list
-            # datadog-vulnerability-notification-rule-list
-            # datadog-risk-scores-notification-rule-list
+            # datadog-risk-scores-list
         }
         if command == "test-module":
             return_results(module_test(configuration))

@@ -543,7 +543,7 @@ script:
         - contextPath: Datadog.Log.raw
           description: The raw log object returned by the API.
           type: Unknown
-    - name: datadog-security-filter-get
+    - name: datadog-security-filter-list
       description: List all security filters from Datadog Cloud SIEM V2. Security filters control which logs are indexed and analyzed by the Cloud SIEM platform.
       outputs:
         - contextPath: Datadog.SecurityFilter.id
@@ -570,6 +570,8 @@ script:
         - contextPath: Datadog.SecurityFilter.raw
           description: The raw filter object returned by the API.
           type: Unknown
+    - name: datadog-signal-notification-rule-list
+      description: List all signal notification rules from Datadog Cloud SIEM V2. Signal notification rules define how and when security signals should trigger notifications to specified channels (e.g., email, Slack, PagerDuty).
   dockerimage: demisto/datadog-api-client:1.0.0.4893383
   isfetch: true
   runonce: false

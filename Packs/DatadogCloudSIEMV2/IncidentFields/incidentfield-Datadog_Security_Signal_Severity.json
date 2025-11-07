@@ -12,7 +12,7 @@
     "id": "incident_datadogcloudsiemv2securitysignalseverity",
     "isReadOnly": true,
     "locked": false,
-    "name": "Datadog Security Signal Severity",
+    "name": "Datadog Cloud SIEM V2 Security Signal Severity",
     "neverSetAsRequired": false,
     "ownerOnly": false,
     "propagationLabels": ["all"],

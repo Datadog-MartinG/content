@@ -12,7 +12,7 @@
     "id": "incident_datadogcloudsiemv2securitysignaltriageassigneename",
     "isReadOnly": false,
     "locked": false,
-    "name": "Datadog Security Signal Triage Assignee Name",
+    "name": "Datadog Cloud SIEM V2 Security Signal Triage Assignee Name",
     "neverSetAsRequired": false,
     "ownerOnly": false,
     "propagationLabels": ["all"],

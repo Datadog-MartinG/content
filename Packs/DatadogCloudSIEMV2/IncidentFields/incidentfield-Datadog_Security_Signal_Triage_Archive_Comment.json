@@ -12,7 +12,7 @@
     "id": "incident_datadogcloudsiemv2securitysignaltriagearchivecomment",
     "isReadOnly": false,
     "locked": false,
-    "name": "Datadog Security Signal Triage Archive Comment",
+    "name": "Datadog Cloud SIEM V2 Security Signal Triage Archive Comment",
     "neverSetAsRequired": false,
     "ownerOnly": false,
     "propagationLabels": ["all"],

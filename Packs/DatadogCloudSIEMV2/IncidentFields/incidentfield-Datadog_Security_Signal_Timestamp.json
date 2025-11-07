@@ -12,7 +12,7 @@
     "id": "incident_datadogcloudsiemv2securitysignaltimestamp",
     "isReadOnly": true,
     "locked": false,
-    "name": "Datadog Security Signal Timestamp",
+    "name": "Datadog Cloud SIEM V2 Security Signal Timestamp",
     "neverSetAsRequired": false,
     "ownerOnly": false,
     "propagationLabels": ["all"],

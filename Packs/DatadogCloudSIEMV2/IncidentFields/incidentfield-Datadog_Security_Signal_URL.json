@@ -12,7 +12,7 @@
     "id": "incident_datadogcloudsiemv2securitysignalurl",
     "isReadOnly": true,
     "locked": false,
-    "name": "Datadog Security Signal URL",
+    "name": "Datadog Cloud SIEM V2 Security Signal URL",
     "neverSetAsRequired": false,
     "ownerOnly": false,
     "propagationLabels": ["all"],

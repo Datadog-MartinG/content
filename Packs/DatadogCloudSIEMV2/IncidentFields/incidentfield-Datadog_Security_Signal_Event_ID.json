@@ -12,7 +12,7 @@
     "id": "incident_datadogcloudsiemv2securitysignaleventid",
     "isReadOnly": true,
     "locked": false,
-    "name": "Datadog Security Signal Event ID",
+    "name": "Datadog Cloud SIEM V2 Security Signal Event ID",
     "neverSetAsRequired": false,
     "ownerOnly": false,
     "propagationLabels": ["all"],

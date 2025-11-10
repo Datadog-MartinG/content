@@ -77,34 +77,6 @@ from CommonServerUserPython import *  # noqa: F401
 disable_warnings()
 
 
-def parse_bool(v: Any) -> bool:
-    """
-    Convert various representations of truthy/falsey values into a boolean.
-
-    Examples:
-        parse_bool(True) -> True
-        parse_bool("true") -> True
-        parse_bool("No") -> False
-        parse_bool(0) -> False
-        parse_bool("1") -> True
-        parse_bool(None) -> False
-    """
-    if isinstance(v, bool):
-        return v
-    if v is None:
-        return False
-    if isinstance(v, (int, float)):
-        return v != 0
-    if isinstance(v, str):
-        s = v.strip().lower()
-        if s in {"true", "t", "yes", "y", "1", "on"}:
-            return True
-        if s in {"false", "f", "no", "n", "0", "off", ""}:
-            return False
-        raise ValueError(f"Cannot interpret string as boolean: {v!r}")
-    return bool(v)
-
-
 """ CONSTANTS """
 
 SITE = "datadoghq.com"
@@ -140,17 +112,17 @@ class Triage:
     state: str
     archive_comment: str
     archive_reason: str
-    assignee: Assignee | None = None
+    assignee: Assignee
 
 
 @dataclass
 class Comment:
     id: str
     created_at: str
-    user_uuid: str
     text: str
-    user_name: str | None = None
-    user_handle: str | None = None
+    user_uuid: str
+    user_name: str
+    user_handle: str
 
     def to_display_dict(self) -> dict[str, Any]:
         """
@@ -188,45 +160,90 @@ class Comment:
         return remove_none_values(result)
 
 
-#   {
-#     "id": "skk-vie-xje",
-#     "type": "notification_rules",
-#     "attributes": {
-#       "created_at": 1646313236860,
-#       "created_by": {
-#         "name": "Eric Allard",
-#         "handle": "eric.allard@datadoghq.com"
-#       },
-#       "enabled": true,
-#       "modified_at": 1727341553210,
-#       "modified_by": {
-#         "name": "Lo\u00efc Taloc",
-#         "handle": "loic.taloc@datadoghq.com"
-#       },
-#       "name": "Application security default",
-#       "selectors": {
-#         "severities": [
-#           "medium",
-#           "high",
-#           "critical"
-#         ],
-#         "rule_types": [
-#           "application_security"
-#         ],
-#         "query": "",
-#         "trigger_source": "security_signals"
-#       },
-#       "targets": [
-#         "@eric.allard@datadoghq.com"
-#       ],
-#       "time_aggregation": 0,
-#       "version": 18
-#     }
-#   },
+@dataclass
+class SecurityNotificationSelectors:
+    severities: list[str]
+    rule_types: list[str]
+    query: str
+    trigger_source: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Convert a SecurityNotificationSelectors to a plain dictionary for XSOAR context output.
+
+        Returns:
+            Dict[str, Any]: Dictionary for context output.
+        """
+        return {
+            "severities": self.severities,
+            "ruleTypes": self.rule_types,
+            "query": self.query,
+            "triggerSource": self.trigger_source,
+        }
+
 
 @dataclass
 class SecurityNotificationRule:
-    pass
+    id: str
+    name: str
+    enabled: bool
+    created_at: datetime
+    created_by: str
+    modified_at: datetime
+    modified_by: str
+    targets: list[str]
+    selectors: SecurityNotificationSelectors
+    time_aggregation: int
+    version: int
+
+    # Raw notification rule data
+    raw: dict[str, Any]
+
+    def build_url(self) -> str:
+        return f"https://app.{SITE}/security/configuration/notification-rules/view/{self.id}"
+
+    def to_display_dict(self) -> dict[str, Any]:
+        """
+        Convert a SecurityNotificationRule to a dictionary optimized for human-readable display.
+
+        Returns:
+            Dict[str, Any]: Dictionary with display-friendly field names and values.
+        """
+        return {
+            "Name": self.name,
+            "Enabled": self.enabled,
+            "Created By": self.created_by,
+            "Created At": self.created_at.isoformat(),
+            "Modified By": self.modified_by,
+            "Created At": self.modified_at.isoformat(),
+            "Severities": ", ".join(self.selectors.severities) if self.selectors.severities else None,
+            "Rule Types": ", ".join(self.selectors.rule_types) if self.selectors.rule_types else None,
+            "Targets": ", ".join(self.targets) if self.targets else None,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Convert a SecurityNotificationRule to a plain dictionary for XSOAR context output.
+
+        Returns:
+            Dict[str, Any]: Dictionary for context output.
+        """
+        result = {
+            "id": self.id,
+            "name": self.name,
+            "enabled": self.enabled,
+            "createdAt": int(self.created_at.timestamp() * 1000),
+            "createdBy": self.created_by,
+            "modifiedAt": int(self.modified_at.timestamp() * 1000),
+            "modifiedBy": self.modified_by,
+            "targets": self.targets,
+            "selectors": self.selectors.to_dict(),
+            "timeAggregation": self.time_aggregation,
+            "version": self.version,
+            "raw": self.raw,
+        }
+
+        return remove_none_values(result)
 
 
 @dataclass
@@ -237,10 +254,10 @@ class SecurityFilter:
     builtin: bool
     name: str
     query: str
-    exclusion_filters: list[str] | None = None
+    exclusion_filters: list[str]
 
     # Raw filter data
-    raw: dict[str, Any] | None = None
+    raw: dict[str, Any]
 
     def to_display_dict(self) -> dict[str, Any]:
         return {
@@ -336,15 +353,15 @@ class SecurityRule:
     name: str
     type: str
     is_enabled: bool
-    created_at: str | None = None
-    message: str | None = None
-    queries: list[dict[str, Any]] | None = None
-    cases: list[dict[str, Any]] | None = None
-    options: dict[str, Any] | None = None
-    tags: list[str] | None = None
+    created_at: datetime
+    message: str
+    queries: list[dict[str, Any]]
+    cases: list[dict[str, Any]]
+    options: dict[str, Any]
+    tags: list[str]
 
     # Raw rule data
-    raw: dict[str, Any] | None = None
+    raw: dict[str, Any]
 
     def build_url(self) -> str:
         """
@@ -432,16 +449,16 @@ class SecurityRule:
 @dataclass
 class Log:
     id: str
-    timestamp: datetime | None = None
-    message: str | None = None
-    service: str | None = None
-    host: str | None = None
-    source: str | None = None
-    status: str | None = None
-    tags: list[str] | None = None
+    timestamp: datetime
+    message: str
+    service: str
+    host: str
+    source: str
+    status: str
+    tags: list[str]
 
     # Raw log data
-    raw: dict[str, Any] | None = None
+    raw: dict[str, Any]
 
     def build_url(self) -> str:
         """
@@ -505,19 +522,19 @@ class Log:
 class SecuritySignal:
     id: str
     event_id: str
-    timestamp: datetime | None = None
-    host: str | None = None
-    service: str | None = None
-    severity: str | None = None
-    title: str | None = None
-    message: str | None = None
-    rule_id: str | None = None
-    triage: Triage | None = None
-    tags: list[str] | None = None
-    triggering_log_id: str | None = None
+    timestamp: datetime
+    host: str
+    service: str
+    severity: str
+    title: str
+    message: str
+    rule_id: str
+    triage: Triage
+    tags: list[str]
+    triggering_log_id: str
 
     # Raw signal
-    raw: dict[str, Any] | None = None
+    raw: dict[str, Any]
 
     def build_url(self) -> str:
         """
@@ -543,7 +560,7 @@ class SecuritySignal:
             "Message": self.message,
             "Severity": self.severity,
             "State": self.triage.state if self.triage else None,
-            "Rule URL": (SecurityRule(id=self.rule_id, name="", type="", is_enabled=False).build_url() if self.rule_id else None),
+            "Rule URL": (f"https://app.{SITE}/security/rules/view/{self.rule_id}" if self.rule_id else None),
             "Host": self.host,
             "Services": self.service,
             "Timestamp": str(self.timestamp) if self.timestamp else None,
@@ -583,7 +600,7 @@ class SecuritySignal:
         if self.rule_id:
             result["rule"] = {
                 "id": self.rule_id,
-                "url": SecurityRule(id=self.rule_id, name="", type="", is_enabled=False).build_url(),
+                "url": f"https://app.{SITE}/security/rules/view/{self.rule_id}",
             }
 
         # Convert triage to dict if present
@@ -605,6 +622,105 @@ class SecuritySignal:
 
 
 """ HELPER FUNCTIONS """
+
+
+def parse_bool(v: Any) -> bool:
+    """
+    Convert various representations of truthy/falsey values into a boolean.
+
+    Examples:
+        parse_bool(True) -> True
+        parse_bool("true") -> True
+        parse_bool("No") -> False
+        parse_bool(0) -> False
+        parse_bool("1") -> True
+        parse_bool(None) -> False
+    """
+    if isinstance(v, bool):
+        return v
+    if v is None:
+        return False
+    if isinstance(v, (int, float)):
+        return v != 0
+    if isinstance(v, str):
+        s = v.strip().lower()
+        if s in {"true", "t", "yes", "y", "1", "on"}:
+            return True
+        if s in {"false", "f", "no", "n", "0", "off", ""}:
+            return False
+        raise ValueError(f"Cannot interpret string as boolean: {v!r}")
+    return bool(v)
+
+
+def parse_timestamp(v: Any) -> datetime | None:
+    """
+    Convert various timestamp representations into a Python datetime object.
+
+    Automatically detects whether the timestamp is in seconds or milliseconds
+    and converts to a timezone-aware datetime in UTC.
+
+    Detection Logic:
+    - If timestamp > 10^11 (100 billion), assumes milliseconds
+    - Otherwise, assumes seconds
+    - This works because:
+      * 10^11 seconds = ~3170 CE (far future)
+      * 10^11 milliseconds = ~1973 CE (reasonable past)
+
+    Args:
+        v: Timestamp value - can be int, float, string, or None
+
+    Returns:
+        datetime: Python datetime object in UTC, or None if input is None/0/invalid
+
+    Examples:
+        >>> parse_timestamp(1646313236)  # Seconds
+        datetime.datetime(2022, 3, 3, 14, 47, 16, tzinfo=datetime.timezone.utc)
+
+        >>> parse_timestamp(1646313236860)  # Milliseconds
+        datetime.datetime(2022, 3, 3, 14, 47, 16, 860000, tzinfo=datetime.timezone.utc)
+
+        >>> parse_timestamp("1646313236000")  # String milliseconds
+        datetime.datetime(2022, 3, 3, 14, 47, 16, tzinfo=datetime.timezone.utc)
+
+        >>> parse_timestamp(None)
+        None
+
+        >>> parse_timestamp(0)
+        None
+    """
+    if v is None or v == 0 or v == "0" or v == "":
+        return None
+
+    try:
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return None
+            try:
+                timestamp = float(v)
+            except ValueError:
+                raise ValueError(f"Cannot parse timestamp from string: {v!r}")
+        elif isinstance(v, (int, float)):
+            timestamp = float(v)
+        else:
+            raise ValueError(f"Cannot parse timestamp from type {type(v).__name__}: {v!r}")
+
+        if timestamp < 0:
+            return None
+
+        # Detect if timestamp is in seconds or milliseconds
+        # If > 100 billion, it's milliseconds (10^11 seconds = year 3170)
+        MILLISECOND_THRESHOLD = 100_000_000_000  # 10^11
+
+        if timestamp > MILLISECOND_THRESHOLD:
+            timestamp_seconds = timestamp / 1_000
+        else:
+            timestamp_seconds = timestamp
+
+        return datetime.fromtimestamp(timestamp_seconds, tz=timezone.utc)
+
+    except (ValueError, OSError, OverflowError) as e:
+        raise ValueError(f"Cannot parse timestamp: {v!r} - {str(e)}")
 
 
 def remove_none_values(data: dict[str, Any]) -> dict[str, Any]:
@@ -779,6 +895,8 @@ def parse_security_comment(data: dict[str, Any]) -> Comment:
         created_at=attrs.get("created_at", ""),
         user_uuid=attrs.get("user_uuid", ""),
         text=attrs.get("text", ""),
+        user_handle="",
+        user_name="",
     )
 
 
@@ -829,22 +947,16 @@ def parse_security_signal(data: dict[str, Any]) -> SecuritySignal:
     rule_d = workflow.get("rule", {})
     triage_d = workflow.get("triage", {})
     assignee_d = triage_d.get("assignee", {})
-    triage = (
-        Triage(
-            state=triage_d.get("state", ""),
-            archive_reason=triage_d.get("archiveReason", ""),
-            archive_comment=triage_d.get("archiveComment", ""),
-            assignee=(
-                Assignee(
-                    name=assignee_d.get("name", "Unassigned"),
-                    handle=assignee_d.get("handle", ""),
-                )
-                if assignee_d
-                else None
-            ),
-        )
-        if triage_d
-        else None
+    triage = Triage(
+        state=triage_d.get("state", ""),
+        archive_reason=triage_d.get("archiveReason", ""),
+        archive_comment=triage_d.get("archiveComment", ""),
+        assignee=(
+            Assignee(
+                name=assignee_d.get("name", "Unassigned"),
+                handle=assignee_d.get("handle", ""),
+            )
+        ),
     )
 
     tag_map = data.get("tag") or attrs.get("tag") or {}
@@ -853,21 +965,21 @@ def parse_security_signal(data: dict[str, Any]) -> SecuritySignal:
     seen = set(tags_list)
     tags = tags_list + [t for t in flat_map if t not in seen]
     services = as_list(data.get("service")) or as_list(attrs.get("service"))
-    service_str = ", ".join(services) if services else None
+    service_str = ", ".join(services) if services else ""
 
     return SecuritySignal(
         id=signal_id,
         event_id=event_id,
-        timestamp=attrs.get("timestamp"),
-        host=attrs.get("host"),
+        timestamp=parse_timestamp(attrs.get("timestamp")) or datetime.now(),
+        host=attrs.get("host", ""),
         service=service_str,
         severity=attrs.get("status", "info"),
         title=custom.get("title") or attrs.get("title") or rule_d.get("name"),
-        message=attrs.get("message"),
+        message=attrs.get("message", ""),
         rule_id=rule_d.get("id", ""),
         triage=triage,
         tags=tags,
-        triggering_log_id=attrs.get("triggering_log_id"),
+        triggering_log_id=attrs.get("triggering_log_id", ""),
         raw=data,
     )
 
@@ -893,11 +1005,11 @@ def parse_security_rule(data: dict[str, Any]) -> SecurityRule:
         name=data.get("name", ""),
         type=data.get("type", ""),
         is_enabled=data.get("isEnabled", False),
-        created_at=data.get("createdAt"),
-        message=data.get("message"),
-        queries=data.get("queries"),
-        cases=data.get("cases"),
-        options=data.get("options"),
+        created_at=parse_timestamp(data.get("createdAt")) or datetime.now(),
+        message=data.get("message", ""),
+        queries=data.get("queries", []),
+        cases=data.get("cases", []),
+        options=data.get("options", {}),
         tags=as_list(data.get("tags")),
         raw=data,
     )
@@ -926,15 +1038,6 @@ def parse_log(data: dict[str, Any]) -> Log:
     data = convert_datetime_to_str(data)
     attrs = data.get("attributes", {}) or {}
 
-    # Parse timestamp if available
-    timestamp = None
-    if attrs.get("timestamp"):
-        try:
-            timestamp = datetime.fromisoformat(attrs.get("timestamp", "").replace("Z", "+00:00"))
-        except (ValueError, AttributeError):
-            # Keep as string if parsing fails
-            timestamp = None
-
     # Extract tags - can be in different formats
     tags = attrs.get("tags", [])
     if isinstance(tags, dict):
@@ -945,12 +1048,12 @@ def parse_log(data: dict[str, Any]) -> Log:
 
     return Log(
         id=data.get("id", "log-id"),
-        timestamp=timestamp,
-        message=attrs.get("message"),
-        service=attrs.get("service"),
-        host=attrs.get("host"),
-        source=attrs.get("source"),
-        status=attrs.get("status"),
+        timestamp=parse_timestamp(attrs.get("stageTimestamp_ms")) or datetime.now(),
+        message=attrs.get("message", ""),
+        service=attrs.get("service", ""),
+        host=attrs.get("host", ""),
+        source=attrs.get("source", ""),
+        status=attrs.get("status", ""),
         tags=tags,
         raw=data,
     )
@@ -1023,7 +1126,56 @@ def parse_security_filter(data: dict[str, Any]) -> SecurityFilter:
         enabled=parse_bool(attrs.get("is_enabled", False)),
         builtin=parse_bool(attrs.get("is_builtin", False)),
         query=attrs.get("query", ""),
-        exclusion_filters=attrs.get("exclusion_filters", []) or None,
+        exclusion_filters=attrs.get("exclusion_filters", []),
+        raw=data,
+    )
+
+
+def parse_security_notification_rule(data: dict[str, Any]) -> SecurityNotificationRule:
+    """
+    Parse raw security notification rule data from the Datadog API into a structured SecurityNotificationRule object.
+
+    Args:
+        data (Dict[str, Any]): Raw security notification rule data from the Datadog API response.
+                              Expected to contain 'id', 'type', and 'attributes' fields.
+
+    Returns:
+        SecurityNotificationRule: Structured dataclass containing parsed notification rule information.
+
+    Example:
+        >>> api_data = {"id": "skk-vie-xje", "type": "notification_rules", "attributes": {...}}
+        >>> notification_rule = parse_security_notification_rule(api_data)
+        >>> notification_rule.id
+        "skk-vie-xje"
+    """
+    attrs = data.get("attributes", {})
+
+    created_by_data = attrs.get("created_by", {})
+    modified_by_data = attrs.get("modified_by", {})
+
+    created_by = f"{created_by_data.get('name', '')} <{created_by_data.get('handle', '')}>" if created_by_data else ""
+    modified_by = f"{modified_by_data.get('name', '')} <{modified_by_data.get('handle', '')}>" if modified_by_data else ""
+
+    selectors_data = attrs.get("selectors", {})
+    selectors = SecurityNotificationSelectors(
+        severities=selectors_data.get("severities", []),
+        rule_types=selectors_data.get("rule_types", []),
+        query=selectors_data.get("query", ""),
+        trigger_source=selectors_data.get("trigger_source", ""),
+    )
+
+    return SecurityNotificationRule(
+        id=data.get("id", ""),
+        name=attrs.get("name", ""),
+        enabled=parse_bool(attrs.get("enabled", False)),
+        created_at=datetime.fromtimestamp(int(attrs.get("created_at", 0)) / 1_000),
+        created_by=created_by,
+        modified_at=datetime.fromtimestamp(int(attrs.get("modified_at", 0)) / 1_000),
+        modified_by=modified_by,
+        targets=attrs.get("targets", []),
+        selectors=selectors,
+        time_aggregation=attrs.get("time_aggregation", 0),
+        version=attrs.get("version", 0),
         raw=data,
     )
 
@@ -2092,7 +2244,10 @@ def list_signal_notification_rule(
     args: dict[str, Any],
 ) -> CommandResults:
     """
-    List all signal notification rules
+    List all signal notification rules from Datadog Cloud SIEM V2.
+
+    Signal notification rules allow you to configure which security signals
+    trigger notifications and where those notifications are sent.
 
     Args:
         configuration: Datadog API configuration
@@ -2114,21 +2269,28 @@ def list_signal_notification_rule(
                 readable_output = "No signal notification rules found."
                 return CommandResults(
                     readable_output=readable_output,
-                    outputs_prefix=f"{INTEGRATION_CONTEXT_NAME}.SignalNotificationRule",
+                    outputs_prefix=SECURITY_NOTIFICATION_RULE_CONTEXT_NAME,
                     outputs_key_field="id",
                     outputs=[],
                 )
 
-            # TODO: Parse notification rules with a dedicated parser function
-            # For now, return raw data
-            readable_output = f"Found {len(notification_rules_data)} signal notification rule(s).\n\n"
-            readable_output += f"Raw data:\n```json\n{json.dumps(notification_rules_data, indent=2)}\n```"
+            # Parse notification rules
+            notification_rules = []
+            display_data = []
+
+            for rule_data in notification_rules_data:
+                notification_rule = parse_security_notification_rule(rule_data)
+                notification_rules.append(notification_rule.to_dict())
+                display_data.append(notification_rule.to_display_dict())
+
+            # Create human-readable summary using the display dictionary
+            readable_output = lookup_to_markdown(display_data, f"Signal Notification Rules ({len(notification_rules)} results)")
 
             return CommandResults(
                 readable_output=readable_output,
-                outputs_prefix=f"{INTEGRATION_CONTEXT_NAME}.SignalNotificationRule",
+                outputs_prefix=SECURITY_NOTIFICATION_RULE_CONTEXT_NAME,
                 outputs_key_field="id",
-                outputs=notification_rules_data,
+                outputs=notification_rules,
             )
 
     except Exception as e:
@@ -2167,19 +2329,19 @@ def fetch_incidents(
 
         # Get last run to handle incremental fetch
         last_run = demisto.getLastRun()
-        last_fetch_time = last_run.get("last_fetch_time")
+        last_fetch_timestamp = int(last_run.get("last_fetch_time", 0))  # Unix timestamp in seconds
 
         # Calculate fetch time range
-        if last_fetch_time:
-            # Incremental fetch - get signals since last fetch
-            from_datetime = parse(last_fetch_time, settings={"TIMEZONE": "UTC"})
-            demisto.debug(f"Fetching incidents since last run: {last_fetch_time}")
+        if last_fetch_timestamp:
+            # Incremental fetch - convert Unix timestamp to datetime
+            from_datetime = parse_timestamp(last_fetch_timestamp) or datetime.now()
+            demisto.debug(f"Fetching incidents since last run: {last_fetch_timestamp} ({from_datetime.isoformat()})")
         else:
             # First fetch - use first_fetch parameter
-            from_datetime = parse(f"-{first_fetch}", settings={"TIMEZONE": "UTC"})
+            from_datetime = parse(f"-{first_fetch}", settings={"TIMEZONE": "UTC"}) or datetime.now()
             demisto.debug(f"First fetch - fetching incidents from: {first_fetch} ago")
 
-        to_datetime = datetime.now()
+        to_datetime = datetime.now(tz=timezone.utc)
 
         # Build filter query
         filter_args = {
@@ -2204,7 +2366,8 @@ def fetch_incidents(
 
         # Convert signals to XSOAR incidents
         incidents = []
-        latest_signal_time = last_fetch_time
+        latest_signal_timestamp = last_fetch_timestamp  # Track as Unix timestamp (seconds)
+
         for signal in signals:
             signal_dict = signal.to_dict()
             owner = signal_dict.get("triage", {}).get("assignee", {}).get("name", "")
@@ -2216,7 +2379,7 @@ def fetch_incidents(
 
             incident = {
                 "name": signal.title or f"Datadog Security Signal {signal.id}",
-                "occurred": (str(signal.timestamp) if signal.timestamp else to_datetime.isoformat()),
+                "occurred": signal.timestamp.isoformat() or to_datetime.isoformat(),
                 "details": signal.message,
                 "severity": map_severity_to_xsoar(signal.severity),
                 "dbotMirrorId": signal.id,
@@ -2227,21 +2390,19 @@ def fetch_incidents(
 
             incidents.append(incident)
 
-            # Track latest signal timestamp for next fetch
-            if signal.timestamp:
-                signal_time = str(signal.timestamp)
-                if not latest_signal_time or signal_time > latest_signal_time:
-                    latest_signal_time = signal_time
+            # Track latest signal timestamp for next fetch (as Unix timestamp in seconds)
+            if not latest_signal_timestamp or int(signal.timestamp.timestamp()) > int(latest_signal_timestamp):
+                latest_signal_timestamp = int(signal.timestamp.timestamp())
 
         demisto.debug(f"Created {len(incidents)} incidents")
 
-        # Update last run with latest timestamp
-        if incidents and latest_signal_time:
-            demisto.setLastRun({"last_fetch_time": latest_signal_time})
-            demisto.debug(f"Updated last_fetch_time to: {latest_signal_time}")
-        elif not last_fetch_time:
-            # First run with no incidents - still save the from_datetime
-            demisto.setLastRun({"last_fetch_time": from_datetime.isoformat()})  # type: ignore
+        # Update last run with latest timestamp (as Unix timestamp in seconds)
+        if incidents and latest_signal_timestamp:
+            demisto.setLastRun({"last_fetch_time": latest_signal_timestamp})
+            demisto.debug(f"Updated last_fetch_time to: {latest_signal_timestamp}")
+        elif not last_fetch_timestamp:
+            # First run with no incidents - still save the from_datetime as Unix timestamp
+            demisto.setLastRun({"last_fetch_time": int(from_datetime.timestamp())})
 
         # Send incidents to XSOAR
         demisto.incidents(incidents)

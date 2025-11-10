@@ -572,6 +572,52 @@ script:
           type: Unknown
     - name: datadog-signal-notification-rule-list
       description: List all signal notification rules from Datadog Cloud SIEM V2. Signal notification rules define how and when security signals should trigger notifications to specified channels (e.g., email, Slack, PagerDuty).
+      outputs:
+        - contextPath: Datadog.SecurityNotificationRule.id
+          description: The unique identifier of the notification rule.
+          type: String
+        - contextPath: Datadog.SecurityNotificationRule.name
+          description: The name of the notification rule.
+          type: String
+        - contextPath: Datadog.SecurityNotificationRule.enabled
+          description: Whether the notification rule is enabled.
+          type: Boolean
+        - contextPath: Datadog.SecurityNotificationRule.createdAt
+          description: Timestamp when the notification rule was created (in milliseconds).
+          type: Number
+        - contextPath: Datadog.SecurityNotificationRule.createdBy
+          description: The creator of the notification rule (name and email).
+          type: String
+        - contextPath: Datadog.SecurityNotificationRule.modifiedAt
+          description: Timestamp when the notification rule was last modified (in milliseconds).
+          type: Number
+        - contextPath: Datadog.SecurityNotificationRule.modifiedBy
+          description: The user who last modified the notification rule (name and email).
+          type: String
+        - contextPath: Datadog.SecurityNotificationRule.targets
+          description: List of notification targets (e.g., email addresses, Slack channels).
+          type: Unknown
+        - contextPath: Datadog.SecurityNotificationRule.selectors.severities
+          description: List of severity levels that trigger this notification rule.
+          type: Unknown
+        - contextPath: Datadog.SecurityNotificationRule.selectors.ruleTypes
+          description: List of rule types that trigger this notification rule.
+          type: Unknown
+        - contextPath: Datadog.SecurityNotificationRule.selectors.query
+          description: Query filter for signals that trigger this notification rule.
+          type: String
+        - contextPath: Datadog.SecurityNotificationRule.selectors.triggerSource
+          description: The source that triggers this notification rule (e.g., security_signals).
+          type: String
+        - contextPath: Datadog.SecurityNotificationRule.timeAggregation
+          description: Time aggregation in seconds for batching notifications.
+          type: Number
+        - contextPath: Datadog.SecurityNotificationRule.version
+          description: The version number of the notification rule.
+          type: Number
+        - contextPath: Datadog.SecurityNotificationRule.raw
+          description: The raw notification rule object returned by the API.
+          type: Unknown
   dockerimage: demisto/datadog-api-client:1.0.0.4893383
   isfetch: true
   runonce: false

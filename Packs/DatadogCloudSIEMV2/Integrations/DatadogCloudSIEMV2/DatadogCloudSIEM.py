@@ -2863,6 +2863,90 @@ def fetch_incidents(
 """ MAIN FUNCTION """
 
 
+""" MIRRORING COMMANDS """
+
+
+def get_remote_data_command(
+    configuration: Configuration,
+    args: dict[str, Any],
+    params: dict[str, Any],
+) -> GetRemoteDataResponse:
+    """
+    Gets new information about a Datadog security signal for incident mirroring.
+
+    This command is called by XSOAR to retrieve updates from Datadog for a specific signal.
+    It should return the signal data that have been updated since lastUpdate.
+
+    Args:
+        configuration: Datadog API configuration
+        args: Command arguments containing:
+            - id (str): The signal ID (same as dbotMirrorId)
+            - lastUpdate (str, optional): ISO timestamp of last update
+        params: Integration parameters for mirroring settings
+
+    Returns:
+        GetRemoteDataResponse: Contains the updated signal data and entries (comments)
+
+    Implementation Notes:
+        1. Retrieve the signal using get_security_signal (already exists)
+        2. Parse lastUpdate timestamp to filter new comments
+        3. Get signal comments using list_security_signal_comments
+        4. Filter comments created after lastUpdate
+        5. Format entries for mirroring (mirror entries should have fields: type, contents, tags)
+        6. Check if signal was closed (state = archived) and handle close_incident param
+        7. Return GetRemoteDataResponse with mirrored_object (signal data) and entries (comments)
+    """
+    # TODO: Implement get-remote-data logic
+    # signal_id = args.get("id")
+    # last_update = args.get("lastUpdate")
+
+    # Example structure:
+    # - Call get_security_signal_command to get signal data
+    # - Call list_security_signal_comments to get comments
+    # - Filter comments by lastUpdate timestamp
+    # - Format comments as entries for mirroring
+    # - Return GetRemoteDataResponse(mirrored_object={...}, entries=[...])
+
+    raise NotImplementedError("get-remote-data command not yet implemented")
+
+
+def get_modified_remote_data_command(
+    configuration: Configuration,
+    args: dict[str, Any],
+) -> GetModifiedRemoteDataResponse:
+    """
+    Gets the list of signal IDs that were modified since lastUpdate.
+
+    This command is called by XSOAR to get a list of all signals that need to be updated.
+    It should query Datadog for signals modified after the lastUpdate timestamp.
+
+    Args:
+        configuration: Datadog API configuration
+        args: Command arguments containing:
+            - lastUpdate (str): ISO timestamp to query from
+
+    Returns:
+        GetModifiedRemoteDataResponse: Contains list of modified signal IDs
+
+    Implementation Notes:
+        1. Parse lastUpdate timestamp
+        2. Use fetch_security_signals or get_security_signal_list to query signals
+        3. Filter signals modified after lastUpdate (compare with signal timestamp or triage update time)
+        4. Extract signal IDs from results
+        5. Return GetModifiedRemoteDataResponse with list of IDs
+    """
+    # TODO: Implement get-modified-remote-data logic
+    # last_update = args.get("lastUpdate")
+
+    # Example structure:
+    # - Parse lastUpdate to datetime
+    # - Call fetch_security_signals with appropriate filters
+    # - Extract IDs from signals where modified_at > lastUpdate
+    # - Return GetModifiedRemoteDataResponse(modified_incident_ids=[...])
+
+    raise NotImplementedError("get-modified-remote-data command not yet implemented")
+
+
 def main() -> None:
     command: str = demisto.command()
     params: dict[str, Any] = demisto.params()
@@ -2899,6 +2983,8 @@ def main() -> None:
             "datadog-signal-notification-rule-list": list_signal_notification_rule_command,
             "datadog-risk-scores-list": list_risk_scores_command,
             "datadog-bitsai-get-investigation": get_security_signal_investigation_command,
+            "get-remote-data": lambda c, a: get_remote_data_command(c, a, params),
+            "get-modified-remote-data": get_modified_remote_data_command,
         }
         if command == "test-module":
             return_results(module_test(configuration))

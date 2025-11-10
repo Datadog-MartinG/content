@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from CommonServerPython import *  # noqa: F401 # pylint: disable=unused-wildcard-import
@@ -2816,6 +2816,10 @@ def fetch_incidents(
         incidents = []
         latest_signal_timestamp = last_fetch_timestamp  # Track as Unix timestamp (seconds)
 
+        # Get mirroring settings
+        mirror_direction = params.get("mirror_direction", "None")
+        mirror_instance = demisto.integrationInstance()
+
         for signal in signals:
             signal_dict = signal.to_dict()
             owner = signal_dict.get("triage", {}).get("assignee", {}).get("name", "")
@@ -2831,6 +2835,8 @@ def fetch_incidents(
                 "details": signal.message,
                 "severity": map_severity_to_xsoar(signal.severity),
                 "dbotMirrorId": signal.id,
+                "dbotMirrorDirection": mirror_direction,
+                "dbotMirrorInstance": mirror_instance,
                 "owner": owner,
                 "labels": labels,
                 "rawJSON": json.dumps(signal_dict),
@@ -2874,40 +2880,63 @@ def get_remote_data_command(
     """
     Gets new information about a Datadog security signal for incident mirroring.
 
-    This command is called by XSOAR to retrieve updates from Datadog for a specific signal.
-    It should return the signal data that have been updated since lastUpdate.
+    This command is called automatically by XSOAR to retrieve updates from Datadog for a specific signal.
 
     Args:
         configuration: Datadog API configuration
-        args: Command arguments containing:
+        args: Command arguments from XSOAR containing:
             - id (str): The signal ID (same as dbotMirrorId)
-            - lastUpdate (str, optional): ISO timestamp of last update
+            - lastUpdate (str): ISO timestamp of last update
         params: Integration parameters for mirroring settings
 
     Returns:
-        GetRemoteDataResponse: Contains the updated signal data and entries (comments)
-
-    Implementation Notes:
-        1. Retrieve the signal using get_security_signal (already exists)
-        2. Parse lastUpdate timestamp to filter new comments
-        3. Get signal comments using list_security_signal_comments
-        4. Filter comments created after lastUpdate
-        5. Format entries for mirroring (mirror entries should have fields: type, contents, tags)
-        6. Check if signal was closed (state = archived) and handle close_incident param
-        7. Return GetRemoteDataResponse with mirrored_object (signal data) and entries (comments)
+        GetRemoteDataResponse: Contains the updated signal data and entries
     """
-    # TODO: Implement get-remote-data logic
-    # signal_id = args.get("id")
-    # last_update = args.get("lastUpdate")
+    parsed_args = GetRemoteDataArgs(args)
+    signal_id = parsed_args.remote_incident_id
+    last_update_str = parsed_args.last_update
+    close_incident = params.get("close_incident", False)
 
-    # Example structure:
-    # - Call get_security_signal_command to get signal data
-    # - Call list_security_signal_comments to get comments
-    # - Filter comments by lastUpdate timestamp
-    # - Format comments as entries for mirroring
-    # - Return GetRemoteDataResponse(mirrored_object={...}, entries=[...])
+    demisto.debug(f"get-remote-data called for signal_id={signal_id}, lastUpdate={last_update_str}")
 
-    raise NotImplementedError("get-remote-data command not yet implemented")
+    try:
+        # Get the signal from Datadog
+        with ApiClient(configuration) as api_client:
+            api_instance = SecurityMonitoringApi(api_client)
+            signal_response = api_instance.get_security_monitoring_signal(signal_id=signal_id)
+            results = signal_response.to_dict()
+            data = results.get("data", {})
+
+            if not data:
+                demisto.debug(f"No signal found with ID: {signal_id}")
+                return GetRemoteDataResponse(mirrored_object={}, entries=[])
+
+            signal = parse_security_signal(data)
+            signal_dict = signal.to_dict()
+
+            # Check if signal is archived and close_incident is enabled
+            entries = []
+            if signal.triage and signal.triage.state == "archived" and close_incident:
+                demisto.debug(f"Signal {signal_id} is archived, closing incident")
+                # Add a close entry
+                entries.append(
+                    {
+                        "Type": EntryType.NOTE,
+                        "Contents": {
+                            "dbotIncidentClose": True,
+                            "closeReason": signal.triage.archive_reason or "Signal archived in Datadog",
+                            "closeNotes": signal.triage.archive_comment or "",
+                        },
+                        "ContentsFormat": EntryFormat.JSON,
+                    }
+                )
+
+            demisto.debug(f"Returning signal data for {signal_id} with {len(entries)} entries")
+            return GetRemoteDataResponse(mirrored_object=signal_dict, entries=entries)
+
+    except Exception as e:
+        demisto.error(f"Error in get-remote-data for signal {signal_id}: {str(e)}")
+        raise DemistoException(f"Failed to get remote data for signal {signal_id}: {str(e)}")
 
 
 def get_modified_remote_data_command(
@@ -2917,34 +2946,49 @@ def get_modified_remote_data_command(
     """
     Gets the list of signal IDs that were modified since lastUpdate.
 
-    This command is called by XSOAR to get a list of all signals that need to be updated.
-    It should query Datadog for signals modified after the lastUpdate timestamp.
+    This command is called automatically by XSOAR to get a list of all signals that need to be updated.
 
     Args:
         configuration: Datadog API configuration
-        args: Command arguments containing:
+        args: Command arguments from XSOAR containing:
             - lastUpdate (str): ISO timestamp to query from
 
     Returns:
         GetModifiedRemoteDataResponse: Contains list of modified signal IDs
-
-    Implementation Notes:
-        1. Parse lastUpdate timestamp
-        2. Use fetch_security_signals or get_security_signal_list to query signals
-        3. Filter signals modified after lastUpdate (compare with signal timestamp or triage update time)
-        4. Extract signal IDs from results
-        5. Return GetModifiedRemoteDataResponse with list of IDs
     """
-    # TODO: Implement get-modified-remote-data logic
-    # last_update = args.get("lastUpdate")
+    remote_args = GetModifiedRemoteDataArgs(args)
+    last_update_str = remote_args.last_update
+    demisto.debug(f"get-modified-remote-data called with lastUpdate={last_update_str}")
 
-    # Example structure:
-    # - Parse lastUpdate to datetime
-    # - Call fetch_security_signals with appropriate filters
-    # - Extract IDs from signals where modified_at > lastUpdate
-    # - Return GetModifiedRemoteDataResponse(modified_incident_ids=[...])
+    try:
+        # Parse lastUpdate to datetime using dateparser for consistent handling
+        last_update = dateparser.parse(last_update_str, settings={"TIMEZONE": "UTC"})
+        if not last_update:
+            demisto.debug("No valid lastUpdate provided, using 1 hour ago")
+            last_update = datetime.now(tz=timezone.utc) - timedelta(hours=1)
 
-    raise NotImplementedError("get-modified-remote-data command not yet implemented")
+        demisto.debug(f"Querying signals modified since {last_update.isoformat()}")
+
+        # Query all signals modified since lastUpdate
+        # We use a wide query to catch all signals, then filter by timestamp
+        signals = fetch_security_signals(
+            configuration=configuration,
+            filter_query="*",  # Get all signals
+            from_datetime=last_update,
+            to_datetime=None,
+            limit=1000,  # Max limit to get all modified signals
+            sort="asc",  # Sort by oldest first
+        )
+
+        # Extract signal IDs
+        modified_signal_ids = [signal.id for signal in signals]
+
+        demisto.debug(f"Found {len(modified_signal_ids)} modified signals since {last_update.isoformat()}")
+        return GetModifiedRemoteDataResponse(modified_signal_ids)
+
+    except Exception as e:
+        demisto.error(f"Error in get-modified-remote-data: {str(e)}")
+        raise DemistoException(f"Failed to get modified remote data: {str(e)}")
 
 
 def main() -> None:
@@ -2969,6 +3013,7 @@ def main() -> None:
             configuration.proxy = proxies.get("https") or proxies.get("http")
 
         commands = {
+            # Cloud SIEM commands
             "datadog-signal-get": get_security_signal_command,
             "datadog-signal-list": get_security_signal_list_command,
             "datadog-signal-update": update_security_signal_command,
@@ -2983,14 +3028,18 @@ def main() -> None:
             "datadog-signal-notification-rule-list": list_signal_notification_rule_command,
             "datadog-risk-scores-list": list_risk_scores_command,
             "datadog-bitsai-get-investigation": get_security_signal_investigation_command,
+            
+            # Test commands
+            "test-module": lambda c, _ : return_results(module_test(c)),
+
+            # Fetch incident
+            "fetch-incidents": lambda c, _ : fetch_incidents(c, params),
+
+            # Mirroring commands
             "get-remote-data": lambda c, a: get_remote_data_command(c, a, params),
             "get-modified-remote-data": get_modified_remote_data_command,
         }
-        if command == "test-module":
-            return_results(module_test(configuration))
-        elif command == "fetch-incidents":
-            fetch_incidents(configuration, params)
-        elif command in commands:
+        if command in commands:
             return_results(commands[command](configuration, args))
         else:
             raise NotImplementedError

@@ -618,6 +618,27 @@ script:
         - contextPath: Datadog.SecurityNotificationRule.raw
           description: The raw notification rule object returned by the API.
           type: Unknown
+    - arguments:
+        - description: The unique identifier of the security signal to get investigation for. If not provided, will attempt to get it from the current incident.
+          name: signal_id
+      name: datadog-bitsai-get-investigation
+      description: Get the BitsAI investigation for a security signal from Datadog Cloud SIEM V2. BitsAI provides AI-powered analysis and investigation steps for security signals.
+      outputs:
+        - contextPath: Datadog.SecurityInvestigation.verdict
+          description: The overall verdict of the AI investigation (e.g., "benign", "suspicious", "malicious").
+          type: String
+        - contextPath: Datadog.SecurityInvestigation.steps
+          description: List of investigation steps performed by BitsAI.
+          type: Unknown
+        - contextPath: Datadog.SecurityInvestigation.steps.name
+          description: The name of the investigation step.
+          type: String
+        - contextPath: Datadog.SecurityInvestigation.steps.verdict
+          description: The verdict for this specific investigation step.
+          type: String
+        - contextPath: Datadog.SecurityInvestigation.steps.summary
+          description: A summary of the findings for this investigation step.
+          type: String
   dockerimage: demisto/datadog-api-client:1.0.0.4893383
   isfetch: true
   runonce: false

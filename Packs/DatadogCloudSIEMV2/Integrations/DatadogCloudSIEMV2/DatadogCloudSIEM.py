@@ -2822,12 +2822,14 @@ def fetch_incidents(
 
         for signal in signals:
             signal_dict = signal.to_dict()
-            owner = signal_dict.get("triage", {}).get("assignee", {}).get("name", "")
+            owner = signal_dict.get("triage", {}).get("assignee", {}).get("handle", "")
             labels = []
 
             if signal.tags:
                 for tag in signal.tags:
                     labels.append({"type": "tag", "value": tag})
+
+            signal_dict["incident_type"] = "Datadog Cloud SIEM V2"
 
             incident = {
                 "name": signal.title or f"Datadog Security Signal {signal.id}",
@@ -3028,13 +3030,10 @@ def main() -> None:
             "datadog-signal-notification-rule-list": list_signal_notification_rule_command,
             "datadog-risk-scores-list": list_risk_scores_command,
             "datadog-bitsai-get-investigation": get_security_signal_investigation_command,
-            
             # Test commands
-            "test-module": lambda c, _ : return_results(module_test(c)),
-
+            "test-module": lambda c, _: return_results(module_test(c)),
             # Fetch incident
-            "fetch-incidents": lambda c, _ : fetch_incidents(c, params),
-
+            "fetch-incidents": lambda c, _: fetch_incidents(c, params),
             # Mirroring commands
             "get-remote-data": lambda c, a: get_remote_data_command(c, a, params),
             "get-modified-remote-data": get_modified_remote_data_command,

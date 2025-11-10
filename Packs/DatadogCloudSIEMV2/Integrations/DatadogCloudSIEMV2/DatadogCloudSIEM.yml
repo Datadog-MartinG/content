@@ -755,6 +755,7 @@ script:
           type: Unknown
   dockerimage: demisto/datadog-api-client:1.0.0.4893383
   isfetch: true
+  ismappable: true
   isremotesyncin: true
   runonce: false
   script: "-"

@@ -233,9 +233,9 @@ class SecurityNotificationRule:
             "id": self.id,
             "name": self.name,
             "enabled": self.enabled,
-            "createdAt": int(self.created_at.timestamp() * 1000),
+            "createdAt": int(self.created_at.timestamp()),
             "createdBy": self.created_by,
-            "modifiedAt": int(self.modified_at.timestamp() * 1000),
+            "modifiedAt": int(self.modified_at.timestamp()),
             "modifiedBy": self.modified_by,
             "targets": self.targets,
             "selectors": self.selectors.to_dict(),
@@ -434,7 +434,7 @@ class SecurityRule:
             "name": self.name,
             "type": self.type,
             "isEnabled": self.is_enabled,
-            "createdAt": self.created_at,
+            "createdAt": int(self.created_at.timestamp()),
             "message": self.message,
             "queries": self.queries,
             "cases": self.cases,
@@ -568,7 +568,7 @@ class Log:
         """
         result = {
             "id": self.id,
-            "timestamp": str(self.timestamp) if self.timestamp else None,
+            "timestamp": int(self.timestamp.timestamp()),
             "message": self.message,
             "service": self.service,
             "host": self.host,
@@ -650,7 +650,7 @@ class SecuritySignal:
         result = {
             "id": self.id,
             "event_id": self.event_id,
-            "timestamp": str(self.timestamp) if self.timestamp else None,
+            "timestamp": int(self.timestamp.timestamp()),
             "host": self.host,
             "service": self.service,
             "severity": self.severity,
@@ -2510,7 +2510,7 @@ def fetch_incidents(
         params: Integration parameters from XSOAR configuration
             - first_fetch: Time range for initial fetch (e.g., "3 days", "7 days")
             - max_fetch: Maximum number of incidents to fetch per cycle (default: 50)
-            - fetch_severity: Comma-separated list of severities to fetch (e.g., "medium,high,critical")
+            - fetch_severity: Min severity to fetch (e.g., medium high critical)
             - fetch_state: Signal state to fetch (default: "open")
             - fetch_query: Additional custom query filter
 

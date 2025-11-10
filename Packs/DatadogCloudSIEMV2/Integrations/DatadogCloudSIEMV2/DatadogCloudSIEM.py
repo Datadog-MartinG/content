@@ -2836,12 +2836,13 @@ def fetch_incidents(
                 "occurred": signal.timestamp.isoformat() or to_datetime.isoformat(),
                 "details": signal.message,
                 "severity": map_severity_to_xsoar(signal.severity),
-                "dbotMirrorId": signal.id,
-                "dbotMirrorDirection": mirror_direction,
-                "dbotMirrorInstance": mirror_instance,
                 "owner": owner,
                 "labels": labels,
                 "rawJSON": json.dumps(signal_dict),
+                # Mirroring fields
+                "dbotMirrorId": signal.id,
+                "dbotMirrorInstance": demisto.integrationInstance(),
+                "dbotMirrorDirection": MIRROR_DIRECTION.get(params.get("mirror_direction", "None")),
             }
 
             incidents.append(incident)
@@ -2993,6 +2994,53 @@ def get_modified_remote_data_command(
         raise DemistoException(f"Failed to get modified remote data: {str(e)}")
 
 
+def get_mapping_fields_command() -> GetMappingFieldsResponse:
+    """
+    Returns the list of fields for a Datadog security signal.
+
+    This command is called by XSOAR to retrieve the schema of available fields
+    for mapping configuration in the UI.
+
+    Returns:
+        GetMappingFieldsResponse: Contains the schema of Datadog signal fields
+    """
+    # Define the schema for Datadog security signals
+    signal_scheme = SchemeTypeMapping(type_name="Datadog Cloud SIEM V2")
+
+    # Add all available signal fields
+    signal_scheme.add_field(name="id", description="Signal ID")
+    signal_scheme.add_field(name="event_id", description="Event ID")
+    signal_scheme.add_field(name="title", description="Signal Title")
+    signal_scheme.add_field(name="message", description="Signal Message")
+    signal_scheme.add_field(name="timestamp", description="Signal Timestamp")
+    signal_scheme.add_field(name="severity", description="Signal Severity")
+    signal_scheme.add_field(name="host", description="Host")
+    signal_scheme.add_field(name="service", description="Services")
+    signal_scheme.add_field(name="tags", description="Tags")
+    signal_scheme.add_field(name="url", description="Signal URL")
+    signal_scheme.add_field(name="triggering_log_id", description="Triggering Log ID")
+
+    # Rule fields
+    signal_scheme.add_field(name="rule.id", description="Rule ID")
+    signal_scheme.add_field(name="rule.url", description="Rule URL")
+
+    # Triage fields
+    signal_scheme.add_field(name="triage.state", description="Triage State")
+    signal_scheme.add_field(name="triage.assignee.name", description="Assignee Name")
+    signal_scheme.add_field(name="triage.assignee.handle", description="Assignee Handle")
+    signal_scheme.add_field(name="triage.archive_comment", description="Archive Comment")
+    signal_scheme.add_field(name="triage.archive_reason", description="Archive Reason")
+
+    # Mirroring fields
+    signal_scheme.add_field(name="mirror_direction", description="Mirror Direction")
+    signal_scheme.add_field(name="mirror_instance", description="Mirror Instance")
+
+    return GetMappingFieldsResponse([signal_scheme])
+
+
+MIRROR_DIRECTION = {"None": None, "Incoming": "In", "Outgoing": "Out", "Both": "Both"}
+
+
 def main() -> None:
     command: str = demisto.command()
     params: dict[str, Any] = demisto.params()
@@ -3031,12 +3079,13 @@ def main() -> None:
             "datadog-risk-scores-list": list_risk_scores_command,
             "datadog-bitsai-get-investigation": get_security_signal_investigation_command,
             # Test commands
-            "test-module": lambda c, _: return_results(module_test(c)),
+            "test-module": lambda c, _a: return_results(module_test(c)),
             # Fetch incident
-            "fetch-incidents": lambda c, _: fetch_incidents(c, params),
+            "fetch-incidents": lambda c, _a: fetch_incidents(c, params),
             # Mirroring commands
             "get-remote-data": lambda c, a: get_remote_data_command(c, a, params),
             "get-modified-remote-data": get_modified_remote_data_command,
+            "get-mapping-fields": lambda _c, _a: get_mapping_fields_command(),
         }
         if command in commands:
             return_results(commands[command](configuration, args))

@@ -970,7 +970,7 @@ def parse_security_signal(data: dict[str, Any]) -> SecuritySignal:
     return SecuritySignal(
         id=signal_id,
         event_id=event_id,
-        timestamp=parse_timestamp(attrs.get("timestamp")) or datetime.now(),
+        timestamp=parse_timestamp(attrs.get("triggering_log_timestamp")) or datetime.now(),
         host=attrs.get("host", ""),
         service=service_str,
         severity=attrs.get("status", "info"),

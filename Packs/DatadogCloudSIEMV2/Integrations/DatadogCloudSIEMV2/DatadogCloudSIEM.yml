@@ -108,7 +108,7 @@ script:
           type: String
         - contextPath: Datadog.SecuritySignal.timestamp
           description: The timestamp when the security signal was generated.
-          type: String
+          type: Number
         - contextPath: Datadog.SecuritySignal.title
           description: The title of the security signal.
           type: String
@@ -203,7 +203,7 @@ script:
           type: String
         - contextPath: Datadog.SecuritySignal.timestamp
           description: The timestamp when the security signal was generated.
-          type: String
+          type: Number
         - contextPath: Datadog.SecuritySignal.host
           description: Host associated with the security signal.
           type: String
@@ -289,7 +289,7 @@ script:
           type: String
         - contextPath: Datadog.SecuritySignal.timestamp
           description: The timestamp when the security signal was generated.
-          type: String
+          type: Number
         - contextPath: Datadog.SecuritySignal.title
           description: The title of the security signal.
           type: String
@@ -518,7 +518,7 @@ script:
           type: String
         - contextPath: Datadog.Log.timestamp
           description: The timestamp when the log was generated.
-          type: String
+          type: Number
         - contextPath: Datadog.Log.message
           description: The log message content.
           type: String
